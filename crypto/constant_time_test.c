@@ -48,10 +48,7 @@
 
 #include <limits.h>
 #include <stdio.h>
-<<<<<<< HEAD
 #include <stdlib.h>
-=======
->>>>>>> 89e038a7e0fbf0475e965dcf5d308c32e837c2ef
 
 static const unsigned int CONSTTIME_TRUE = ~0;
 static const unsigned int CONSTTIME_FALSE = 0;
