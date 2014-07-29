@@ -48,6 +48,7 @@
 
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static const unsigned int CONSTTIME_TRUE = ~0;
 static const unsigned int CONSTTIME_FALSE = 0;
@@ -191,8 +192,13 @@ int main(int argc, char *argv[])
 		}
 
 	if (!num_failed)
+		{
 		fprintf(stdout, "ok (ran %d tests)\n", num_all);
+		return EXIT_SUCCESS;
+		}
 	else
+		{
 		fprintf(stdout, "%d of %d tests failed!\n", num_failed, num_all);
-	return num_failed;
+		return EXIT_FAILURE;
+		}
 	}

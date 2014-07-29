@@ -673,13 +673,7 @@ bntest.o: ../include/openssl/symhacks.h ../include/openssl/x509.h
 bntest.o: ../include/openssl/x509_vfy.h bntest.c
 casttest.o: ../e_os.h ../include/openssl/cast.h ../include/openssl/e_os2.h
 casttest.o: ../include/openssl/opensslconf.h casttest.c
-constant_time_test.o: ../include/openssl/buffer.h ../include/openssl/crypto.h
-constant_time_test.o: ../include/openssl/e_os2.h
-constant_time_test.o: ../include/openssl/opensslconf.h
-constant_time_test.o: ../include/openssl/opensslv.h
-constant_time_test.o: ../include/openssl/ossl_typ.h
-constant_time_test.o: ../include/openssl/safestack.h ../include/openssl/stack.h
-constant_time_test.o: ../include/openssl/symhacks.h constant_time_test.c
+constant_time_test.o: ../crypto/constant_time_locl.h constant_time_test.c
 destest.o: ../include/openssl/des.h ../include/openssl/des_old.h
 destest.o: ../include/openssl/e_os2.h ../include/openssl/opensslconf.h
 destest.o: ../include/openssl/ossl_typ.h ../include/openssl/safestack.h
