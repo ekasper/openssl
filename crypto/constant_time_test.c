@@ -133,8 +133,9 @@ static int test_is_zero_8(unsigned int a)
         return 0;
 	}
 
-static unsigned int test_values[] = {0, 1, UINT_MAX/2-1, UINT_MAX/2,
-                                     UINT_MAX/2+1, UINT_MAX-1, UINT_MAX};
+static unsigned int test_values[] = {0, 1, 1024, 12345, 32000, UINT_MAX/2-1,
+                                     UINT_MAX/2, UINT_MAX/2+1, UINT_MAX-1,
+                                     UINT_MAX};
 
 int main(int argc, char *argv[])
 	{

@@ -114,7 +114,7 @@ inline unsigned int constant_time_lt(unsigned int a, unsigned int b)
 	{
 	unsigned int lt;
 	/* Case 1: msb(a) == msb(b). a < b iff the MSB of a - b is set.*/
-        lt = ~(a ^ b) & (a - b);
+	lt = ~(a ^ b) & (a - b);
 	/* Case 2: msb(a) != msb(b). a < b iff the MSB of b is set. */
 	lt |= ~a & b;
 	return constant_time_msb(lt);
@@ -122,14 +122,14 @@ inline unsigned int constant_time_lt(unsigned int a, unsigned int b)
 
 inline unsigned char constant_time_lt_8(unsigned int a, unsigned int b)
 	{
-        return (unsigned char)(constant_time_lt(a, b));
+	return (unsigned char)(constant_time_lt(a, b));
 	}
 
 inline unsigned int constant_time_ge(unsigned int a, unsigned int b)
 	{
 	unsigned int ge;
 	/* Case 1: msb(a) == msb(b). a >= b iff the MSB of a - b is not set.*/
-        ge = ~((a ^ b) | (a - b));
+	ge = ~((a ^ b) | (a - b));
 	/* Case 2: msb(a) != msb(b). a >= b iff the MSB of a is set. */
 	ge |= a & ~b;
 	return constant_time_msb(ge);
@@ -137,7 +137,7 @@ inline unsigned int constant_time_ge(unsigned int a, unsigned int b)
 
 inline unsigned char constant_time_ge_8(unsigned int a, unsigned int b)
 	{
-        return (unsigned char)(constant_time_ge(a, b));
+	return (unsigned char)(constant_time_ge(a, b));
 	}
 
 inline unsigned int constant_time_is_zero(unsigned int a)
@@ -147,7 +147,7 @@ inline unsigned int constant_time_is_zero(unsigned int a)
 
 inline unsigned char constant_time_is_zero_8(unsigned int a)
 	{
-        return (unsigned char)(constant_time_is_zero(a));
+	return (unsigned char)(constant_time_is_zero(a));
 	}
 
 inline unsigned int constant_time_eq(unsigned int a, unsigned int b)
@@ -157,7 +157,7 @@ inline unsigned int constant_time_eq(unsigned int a, unsigned int b)
 
 inline unsigned char constant_time_eq_8(unsigned int a, unsigned int b)
 	{
-        return (unsigned char)(constant_time_eq(a, b));
+	return (unsigned char)(constant_time_eq(a, b));
 	}
 
 #ifdef __cplusplus
