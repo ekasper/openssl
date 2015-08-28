@@ -360,11 +360,13 @@ int i2o_SCT_LIST(STACK_OF(SCT) *a, unsigned char **pp)
         if (pp) {
             p2 = p;
             p += 2;
-        }
-        if ((sctlen = i2o_SCT(sk_SCT_value(a, i), &p)) == -1)
-            goto err;
-        if (pp)
+            if ((sctlen = i2o_SCT(sk_SCT_value(a, i), &p)) == -1)
+                goto err;
             s2n(sctlen, p2);
+        } else {
+          if ((sctlen = i2o_SCT(sk_SCT_value(a, i), NULL)) == -1)
+              goto err;
+        }
         len2 += 2 + sctlen;
     }
 
