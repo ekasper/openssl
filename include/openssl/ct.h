@@ -211,17 +211,23 @@ void ERR_load_CT_strings(void);
 # define CT_F_SCT_SET_VERSION                             118
 # define CT_F_SCT_VERIFY                                  119
 # define CT_F_SCT_VERIFY_V1                               120
+# define CT_F_SSL_APPLY_CERTIFICATE_TRANSPARENCY_POLICY   136
+# define CT_F_SSL_CTX_APPLY_CERTIFICATE_TRANSPARENCY_POLICY 137
+# define CT_F_SSL_GET_PEER_SCTS                           138
+# define CT_F_SSL_VALIDATE_CT                             139
 
 /* Reason codes. */
 # define CT_R_BAD_WRITE                                   118
 # define CT_R_CT_JSON_PARSE_ERROR                         112
 # define CT_R_CT_JSON_PARSE_MORE_THAN_ONE_OBJECT          113
 # define CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED         114
+# define CT_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED        123
 # define CT_R_ENCODE_ERROR                                115
 # define CT_R_ENCODE_FAILURE                              119
 # define CT_R_ILLEGAL_CURVE                               109
 # define CT_R_INVALID_LOGID_LENGTH                        100
 # define CT_R_LOG_ERROR                                   116
+# define CT_R_MALLOC_FAILED                               124
 # define CT_R_NOT_ENOUGH_SCTS                             122
 # define CT_R_NULL_INPUT                                  117
 # define CT_R_RSA_KEY_TOO_WEAK                            110
@@ -233,6 +239,7 @@ void ERR_load_CT_strings(void);
 # define CT_R_SCT_NOT_SET                                 105
 # define CT_R_SCT_SET_FAIL                                121
 # define CT_R_SCT_UNSUPPORTED_VERSION                     106
+# define CT_R_SET_FAILED                                  125
 # define CT_R_UNSUPPORTED_ALGORITHM                       111
 # define CT_R_UNSUPPORTED_ENTRY_TYPE                      107
 # define CT_R_UNSUPPORTED_VERSION                         108

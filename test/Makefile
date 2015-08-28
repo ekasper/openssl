@@ -793,9 +793,10 @@ gost2814789test.o: ../include/openssl/pkcs7.h ../include/openssl/safestack.h
 gost2814789test.o: ../include/openssl/sha.h ../include/openssl/stack.h
 gost2814789test.o: ../include/openssl/symhacks.h ../include/openssl/x509.h
 gost2814789test.o: ../include/openssl/x509_vfy.h gost2814789test.c
-heartbeat_test.o: ../e_os.h ../include/openssl/asn1.h ../include/openssl/bio.h
-heartbeat_test.o: ../include/openssl/bn.h ../include/openssl/buffer.h
-heartbeat_test.o: ../include/openssl/comp.h ../include/openssl/crypto.h
+heartbeat_test.o: ../crypto/ct/ct_locl.h ../e_os.h ../include/openssl/asn1.h
+heartbeat_test.o: ../include/openssl/bio.h ../include/openssl/bn.h
+heartbeat_test.o: ../include/openssl/buffer.h ../include/openssl/comp.h
+heartbeat_test.o: ../include/openssl/crypto.h ../include/openssl/ct.h
 heartbeat_test.o: ../include/openssl/dsa.h ../include/openssl/dtls1.h
 heartbeat_test.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
 heartbeat_test.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
@@ -919,10 +920,11 @@ sha1test.o: ../include/openssl/objects.h ../include/openssl/opensslconf.h
 sha1test.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
 sha1test.o: ../include/openssl/safestack.h ../include/openssl/sha.h
 sha1test.o: ../include/openssl/stack.h ../include/openssl/symhacks.h sha1test.c
-ssltest.o: ../e_os.h ../include/openssl/asn1.h ../include/openssl/bio.h
-ssltest.o: ../include/openssl/bn.h ../include/openssl/buffer.h
-ssltest.o: ../include/openssl/comp.h ../include/openssl/conf.h
-ssltest.o: ../include/openssl/crypto.h ../include/openssl/dh.h
+ssltest.o: ../crypto/ct/ct_locl.h ../e_os.h ../include/openssl/asn1.h
+ssltest.o: ../include/openssl/bio.h ../include/openssl/bn.h
+ssltest.o: ../include/openssl/buffer.h ../include/openssl/comp.h
+ssltest.o: ../include/openssl/conf.h ../include/openssl/crypto.h
+ssltest.o: ../include/openssl/ct.h ../include/openssl/dh.h
 ssltest.o: ../include/openssl/dsa.h ../include/openssl/dtls1.h
 ssltest.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
 ssltest.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
