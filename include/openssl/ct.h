@@ -114,6 +114,7 @@ void SCT_CTX_free(SCT_CTX * sctx);
 
 int SCT_CTX_set1_cert(SCT_CTX * sctx, X509 *cert, X509 *presigner);
 int SCT_CTX_set1_issuer(SCT_CTX * sctx, const X509 *issuer);
+int SCT_CTX_set1_issuerpubkey(SCT_CTX * sctx, X509_PUBKEY *pubkey);
 int SCT_CTX_set1_pubkey(SCT_CTX * sctx, X509_PUBKEY *pubkey);
 
 int SCT_verify(const SCT_CTX * sctx, const SCT *sct);

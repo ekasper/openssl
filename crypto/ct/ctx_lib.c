@@ -256,6 +256,11 @@ int SCT_CTX_set1_issuer(SCT_CTX * sctx, const X509 *issuer)
                              issuer->cert_info->key);
 }
 
+int SCT_CTX_set1_issuerpubkey(SCT_CTX * sctx, X509_PUBKEY *pubkey)
+{
+    return sct_set1_key_hash(&sctx->ihash, &sctx->ihashlen, pubkey);
+}
+
 int SCT_CTX_set1_pubkey(SCT_CTX * sctx, X509_PUBKEY *pubkey)
 {
     EVP_PKEY *pkey;
