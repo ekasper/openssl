@@ -60,6 +60,7 @@
 
 # include <openssl/ossl_typ.h>
 # include <openssl/ct.h>
+# include <openssl/safestack.h>
 
 #ifdef    __cplusplus
 extern "C" {
@@ -78,6 +79,14 @@ extern "C" {
 
 # define MAX_SCT_SIZE            65535
 # define MAX_SCT_LIST_SIZE      MAX_SCT_SIZE
+
+typedef struct jf_st JSON_FRAGMENT;
+
+DECLARE_STACK_OF(JSON_FRAGMENT)
+
+typedef enum {OBJ_ARRAY, OBJ_DICT, DICT_BEG, ARR_BEG, VAL_TRUE, VAL_FALSE,
+              VAL_NULL, VAL_NUMBER, VAL_STRING, SEP_NAME, SEP_VAL,
+              NAME_VAL} json_token_type;
 
 struct sct_st {
     int version;
@@ -118,9 +127,30 @@ struct sct_ctx_st {
     size_t prederlen;
 };
 
+struct jf_st {
+    json_token_type type;
+    BUF_MEM *buffer;
+    struct jf_st *name;
+    struct jf_st *value;
+    STACK_OF(JSON_FRAGMENT) *children;
+};
+
 int sct_check_format(const SCT *sct);
 void sct_free_internal(SCT *sct);
 EVP_PKEY *sct_key_dup(EVP_PKEY *pkey);
+
+/* JSON stuff */
+int CT_json_write_string(BIO *out, const char *data, int len);
+BUF_MEM *CT_base64_encode(BUF_MEM *in);
+void JSON_FRAGMENT_free(JSON_FRAGMENT *f);
+JSON_FRAGMENT *CT_parse_json(const char *data, uint32_t len);
+void CT_base64_decode(char *in, uint16_t in_len,
+                      char **out, uint16_t *out_len);
+const JSON_FRAGMENT *CT_json_get_value(const JSON_FRAGMENT *par,
+                                       const char *key);
+JSON_FRAGMENT *JSON_FRAGMENT_alloc(json_token_type t);
+int CT_json_complete_array(STACK_OF(JSON_FRAGMENT) *frags);
+int CT_json_complete_dict(STACK_OF(JSON_FRAGMENT) *frags);
 
 #ifdef  __cplusplus
 }

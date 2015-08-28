@@ -1,6 +1,6 @@
 /* crypto/ct/ct_err.c */
 /* ====================================================================
- * Copyright (c) 1999-2014 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999-2015 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -70,6 +70,11 @@
 # define ERR_REASON(reason) ERR_PACK(ERR_LIB_CT,0,reason)
 
 static ERR_STRING_DATA CT_str_functs[] = {
+    {ERR_FUNC(CT_F_CT_BASE64_DECODE), "CT_base64_decode"},
+    {ERR_FUNC(CT_F_CT_BASE64_ENCODE), "CT_base64_encode"},
+    {ERR_FUNC(CT_F_CT_JSON_COMPLETE_ARRAY), "CT_json_complete_array"},
+    {ERR_FUNC(CT_F_CT_JSON_COMPLETE_DICT), "CT_json_complete_dict"},
+    {ERR_FUNC(CT_F_CT_PARSE_JSON), "CT_parse_json"},
     {ERR_FUNC(CT_F_D2I_SCT_LIST), "D2I_SCT_LIST"},
     {ERR_FUNC(CT_F_I2D_SCT_LIST), "I2D_SCT_LIST"},
     {ERR_FUNC(CT_F_I2O_SCT), "i2o_SCT"},
@@ -96,6 +101,11 @@ static ERR_STRING_DATA CT_str_functs[] = {
 };
 
 static ERR_STRING_DATA CT_str_reasons[] = {
+    {ERR_REASON(CT_R_CT_JSON_PARSE_ERROR), "ct json parse error"},
+    {ERR_REASON(CT_R_CT_JSON_PARSE_MORE_THAN_ONE_OBJECT),
+     "ct json parse more than one object"},
+    {ERR_REASON(CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED),
+     "ct json parse unicode not supported"},
     {ERR_REASON(CT_R_ILLEGAL_CURVE), "illegal curve"},
     {ERR_REASON(CT_R_INVALID_LOGID_LENGTH), "invalid logid length"},
     {ERR_REASON(CT_R_RSA_KEY_TOO_WEAK), "rsa key too weak"},

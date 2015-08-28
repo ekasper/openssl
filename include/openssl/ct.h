@@ -132,6 +132,11 @@ void ERR_load_CT_strings(void);
 /* Error codes for the CT functions. */
 
 /* Function codes. */
+# define CT_F_CT_BASE64_DECODE                            122
+# define CT_F_CT_BASE64_ENCODE                            123
+# define CT_F_CT_JSON_COMPLETE_ARRAY                      124
+# define CT_F_CT_JSON_COMPLETE_DICT                       125
+# define CT_F_CT_PARSE_JSON                               126
 # define CT_F_D2I_SCT_LIST                                100
 # define CT_F_I2D_SCT_LIST                                101
 # define CT_F_I2O_SCT                                     102
@@ -156,6 +161,9 @@ void ERR_load_CT_strings(void);
 # define CT_F_SCT_VERIFY_V1                               120
 
 /* Reason codes. */
+# define CT_R_CT_JSON_PARSE_ERROR                         112
+# define CT_R_CT_JSON_PARSE_MORE_THAN_ONE_OBJECT          113
+# define CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED         114
 # define CT_R_ILLEGAL_CURVE                               109
 # define CT_R_INVALID_LOGID_LENGTH                        100
 # define CT_R_RSA_KEY_TOO_WEAK                            110
