@@ -1,6 +1,6 @@
 /* crypto/ct/ct_err.c */
 /* ====================================================================
- * Copyright (c) 1999-2014 The OpenSSL Project.  All rights reserved.
+ * Copyright (c) 1999-2015 The OpenSSL Project.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -70,6 +70,20 @@
 # define ERR_REASON(reason) ERR_PACK(ERR_LIB_CT,0,reason)
 
 static ERR_STRING_DATA CT_str_functs[] = {
+    {ERR_FUNC(CT_F_CTLOG_CREATE_LOG_FROM_JSON_FRAGMENT),
+     "CTLOG_create_log_from_json_fragment"},
+    {ERR_FUNC(CT_F_CTLOG_STORE_LOAD_FILE), "CTLOG_STORE_load_file"},
+    {ERR_FUNC(CT_F_CTLOG_WRITE_BIO), "CTLOG_write_bio"},
+    {ERR_FUNC(CT_F_CT_BASE64_DECODE), "CT_base64_decode"},
+    {ERR_FUNC(CT_F_CT_BASE64_ENCODE), "CT_base64_encode"},
+    {ERR_FUNC(CT_F_CT_EVALUATE_POLICY), "CT_evaluate_policy"},
+    {ERR_FUNC(CT_F_CT_JSON_COMPLETE_ARRAY), "CT_json_complete_array"},
+    {ERR_FUNC(CT_F_CT_JSON_COMPLETE_DICT), "CT_json_complete_dict"},
+    {ERR_FUNC(CT_F_CT_PARSE_JSON), "CT_parse_json"},
+    {ERR_FUNC(CT_F_CT_PARSE_SCT_LIST), "CT_parse_sct_list"},
+    {ERR_FUNC(CT_F_CT_SERVER_INFO_ENCODE_SCT_LIST_BIO),
+     "CT_server_info_encode_sct_list_bio"},
+    {ERR_FUNC(CT_F_CT_VALIDATE_SCT), "CT_validate_sct"},
     {ERR_FUNC(CT_F_D2I_SCT_LIST), "D2I_SCT_LIST"},
     {ERR_FUNC(CT_F_I2D_SCT_LIST), "I2D_SCT_LIST"},
     {ERR_FUNC(CT_F_I2O_SCT), "i2o_SCT"},
@@ -82,6 +96,7 @@ static ERR_STRING_DATA CT_str_functs[] = {
     {ERR_FUNC(CT_F_SCT_GET0_SIGNATURE), "SCT_get0_signature"},
     {ERR_FUNC(CT_F_SCT_GET_LOG_ENTRY_TYPE), "SCT_get_log_entry_type"},
     {ERR_FUNC(CT_F_SCT_GET_SIGNATURE_NID), "SCT_get_signature_nid"},
+    {ERR_FUNC(CT_F_SCT_GET_SOURCE), "SCT_get_source"},
     {ERR_FUNC(CT_F_SCT_GET_TIMESTAMP), "SCT_get_timestamp"},
     {ERR_FUNC(CT_F_SCT_GET_VERSION), "SCT_get_version"},
     {ERR_FUNC(CT_F_SCT_KEY_DUP), "sct_key_dup"},
@@ -89,22 +104,46 @@ static ERR_STRING_DATA CT_str_functs[] = {
     {ERR_FUNC(CT_F_SCT_NEW_FROM_BASE64), "SCT_new_from_base64"},
     {ERR_FUNC(CT_F_SCT_SET0_LOGID), "SCT_set0_logid"},
     {ERR_FUNC(CT_F_SCT_SET_LOG_ENTRY_TYPE), "SCT_set_log_entry_type"},
+    {ERR_FUNC(CT_F_SCT_SET_SOURCE), "SCT_set_source"},
     {ERR_FUNC(CT_F_SCT_SET_VERSION), "SCT_set_version"},
     {ERR_FUNC(CT_F_SCT_VERIFY), "SCT_verify"},
     {ERR_FUNC(CT_F_SCT_VERIFY_V1), "SCT_verify_v1"},
+    {ERR_FUNC(CT_F_SSL_APPLY_CERTIFICATE_TRANSPARENCY_POLICY),
+     "SSL_APPLY_CERTIFICATE_TRANSPARENCY_POLICY"},
+    {ERR_FUNC(CT_F_SSL_CTX_APPLY_CERTIFICATE_TRANSPARENCY_POLICY),
+     "SSL_CTX_APPLY_CERTIFICATE_TRANSPARENCY_POLICY"},
+    {ERR_FUNC(CT_F_SSL_GET_PEER_SCTS), "SSL_GET_PEER_SCTS"},
+    {ERR_FUNC(CT_F_SSL_VALIDATE_CT), "SSL_validate_ct"},
     {0, NULL}
 };
 
 static ERR_STRING_DATA CT_str_reasons[] = {
+    {ERR_REASON(CT_R_BAD_WRITE), "bad write"},
+    {ERR_REASON(CT_R_CT_JSON_PARSE_ERROR), "ct json parse error"},
+    {ERR_REASON(CT_R_CT_JSON_PARSE_MORE_THAN_ONE_OBJECT),
+     "ct json parse more than one object"},
+    {ERR_REASON(CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED),
+     "ct json parse unicode not supported"},
+    {ERR_REASON(CT_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED),
+     "custom ext handler already installed"},
+    {ERR_REASON(CT_R_ENCODE_ERROR), "encode error"},
+    {ERR_REASON(CT_R_ENCODE_FAILURE), "encode failure"},
     {ERR_REASON(CT_R_ILLEGAL_CURVE), "illegal curve"},
     {ERR_REASON(CT_R_INVALID_LOGID_LENGTH), "invalid logid length"},
+    {ERR_REASON(CT_R_LOG_ERROR), "log error"},
+    {ERR_REASON(CT_R_MALLOC_FAILED), "malloc failed"},
+    {ERR_REASON(CT_R_NOT_ENOUGH_SCTS), "not enough scts"},
+    {ERR_REASON(CT_R_NULL_INPUT), "null input"},
     {ERR_REASON(CT_R_RSA_KEY_TOO_WEAK), "rsa key too weak"},
     {ERR_REASON(CT_R_SCT_INVALID), "sct invalid"},
     {ERR_REASON(CT_R_SCT_INVALID_SIGNATURE), "sct invalid signature"},
     {ERR_REASON(CT_R_SCT_LIST_INVALID), "sct list invalid"},
+    {ERR_REASON(CT_R_SCT_LIST_MALLOC_FAILED), "sct list malloc failed"},
     {ERR_REASON(CT_R_SCT_LOG_ID_MISMATCH), "sct log id mismatch"},
     {ERR_REASON(CT_R_SCT_NOT_SET), "sct not set"},
+    {ERR_REASON(CT_R_SCT_SET_FAIL), "sct set fail"},
     {ERR_REASON(CT_R_SCT_UNSUPPORTED_VERSION), "sct unsupported version"},
+    {ERR_REASON(CT_R_SET_FAILED), "set failed"},
     {ERR_REASON(CT_R_UNSUPPORTED_ALGORITHM), "unsupported algorithm"},
     {ERR_REASON(CT_R_UNSUPPORTED_ENTRY_TYPE), "unsupported entry type"},
     {ERR_REASON(CT_R_UNSUPPORTED_VERSION), "unsupported version"},

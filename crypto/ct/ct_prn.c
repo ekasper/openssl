@@ -97,6 +97,24 @@ static void timestamp_print(BIO *out, uint64_t timestamp)
 int SCT_print(SCT *sct, BIO *out, int indent)
 {
     BIO_printf(out, "%*sSigned Certificate Timestamp:", indent, "");
+
+    switch (sct->source) {
+    case CT_TLS_EXTENSION:
+        BIO_printf(out, "\n%*sSource    : TLS Extension", indent + 4, "");
+        break;
+    case CT_X509V3_EXTENSION:
+        BIO_printf(out, "\n%*sSource    : X509v3 Extension", indent + 4, "");
+        break;
+    case CT_OCSP_STAPLED_RESPONSE:
+        BIO_printf(out, "\n%*sSource    : OCSP Stapled Response",
+                                                            indent + 4, "");
+        break;
+    case CT_SOURCE_UNKNOWN:
+        BIO_printf(out, "\n%*sSource    : Unknown",
+                                                            indent + 4, "");
+        break;
+    }
+
     BIO_printf(out, "\n%*sVersion   : ", indent + 4, "");
 
     if (sct->version == 0) {    /* SCT v1 */
@@ -105,8 +123,15 @@ int SCT_print(SCT *sct, BIO *out, int indent)
         BIO_printf(out, "\n%*sLog ID    : ", indent + 4, "");
         BIO_hex_string(out, indent + 16, 16, sct->logid, sct->logidlen);
 
+        BIO_printf(out, "\n%*sLog Name  : ", indent + 4, "");
+        if (sct->log)
+            BIO_printf(out, "%.*s", sct->log->name_len, sct->log->name);
+        else
+            BIO_printf(out, "Unknown");
+
         BIO_printf(out, "\n%*sTimestamp : ", indent + 4, "");
         timestamp_print(out, sct->timestamp);
+        BIO_printf(out, " (%"PRIu64")", sct->timestamp);
 
         BIO_printf(out, "\n%*sExtensions: ", indent + 4, "");
         if (sct->extlen == 0)
@@ -123,6 +148,29 @@ int SCT_print(SCT *sct, BIO *out, int indent)
         BIO_printf(out, "unknown\n%*s", indent + 16, "");
         BIO_hex_string(out, indent + 16, 16, sct->sct, sct->sctlen);
     }
+
+    BIO_printf(out, "\n%*sStatus    : ", indent + 4, "");
+    switch (sct->validation_status) {
+    case CT_STATUS_NONE:
+        BIO_printf(out, "Unattempted");
+        break;
+    case CT_STATUS_UNKNOWN_VERSION:
+        BIO_printf(out, "Unrecognized SCT version - unable to validate");
+        break;
+    case CT_STATUS_UNKNOWN_LOG:
+        BIO_printf(out, "Unrecognized log - unable to validate");
+        break;
+    case CT_STATUS_UNVERIFIED:
+        BIO_printf(out, "Cert chain not verified - unable to validate");
+        break;
+    case CT_STATUS_VALID:
+        BIO_printf(out, "Valid - success!");
+        break;
+    case CT_STATUS_INVALID:
+        BIO_printf(out, "Invalid - failure!");
+        break;
+    }
+    BIO_printf(out, "\n");
 
     return 1;
 }

@@ -71,6 +71,9 @@ SCT *SCT_new(void)
         memset(sct, 0, sizeof(SCT));
     sct->entry_type = UNSET_ENTRY;
     sct->version = -1;
+    sct->source = CT_SOURCE_UNKNOWN;
+    sct->validation_status = CT_STATUS_NONE;
+    sct->log = NULL;
     return sct;
 }
 
@@ -102,6 +105,34 @@ int SCT_set_version(SCT *sct, unsigned char version)
     }
     sct->version = 0;
     return 1;
+}
+
+int SCT_set_source(SCT *sct, sct_source_t source)
+{
+    int rv = 0;
+    if (sct == NULL) {
+        CTerr(CT_F_SCT_SET_SOURCE, ERR_R_PASSED_NULL_PARAMETER);
+        goto err;
+    }
+    sct->source = source;
+    switch (source) {
+    case CT_TLS_EXTENSION:
+    case CT_OCSP_STAPLED_RESPONSE:
+        rv = SCT_set_log_entry_type(sct, X509_ENTRY);
+        if (rv != 1)
+            goto err;
+        break;
+    case CT_X509V3_EXTENSION:
+        rv = SCT_set_log_entry_type(sct, PRECERT_ENTRY);
+        if (rv != 1)
+            goto err;
+        break;
+    default: /* if we aren't sure, leave the log entry type alone */
+        break;
+    }
+    rv = 1;
+err:
+    return rv;
 }
 
 int SCT_set_log_entry_type(SCT *sct, log_entry_type_t entry_type)
@@ -178,9 +209,19 @@ int SCT_get_version(const SCT *sct, unsigned char *version)
     return 1;
 }
 
-int SCT_get_log_entry_type(SCT *sct, log_entry_type_t * entry_type)
+int SCT_get_source(SCT *sct, sct_source_t *source)
 {
-    if (!sct) {
+    if (sct == NULL || source == NULL) {
+        CTerr(CT_F_SCT_GET_SOURCE, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+    *source = sct->entry_type;
+    return 1;
+}
+
+int SCT_get_log_entry_type(SCT *sct, log_entry_type_t *entry_type)
+{
+    if (sct == NULL || entry_type == NULL) {
         CTerr(CT_F_SCT_GET_LOG_ENTRY_TYPE, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
