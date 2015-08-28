@@ -1,7 +1,8 @@
 /* crypto/ct/ct_locl.h */
 /*
- * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL project
- * 2015.
+ * Written by Dr Stephen N Henson (steve@openssl.org)
+ * and Adam Eijdenberg (eijdenberg@google.com)
+ * for the OpenSSL project 2015.
  */
 /* ====================================================================
  * Copyright (c) 2015 The OpenSSL Project.  All rights reserved.
@@ -54,18 +55,29 @@
  */
 
 
+#ifndef HEADER_SCT_INTERNAL_H
+# define HEADER_SCT_INTERNAL_H
+
+# include <openssl/ossl_typ.h>
+# include <openssl/ct.h>
+
+#ifdef    __cplusplus
+extern "C" {
+#endif
+
+
 /* All hashes are currently SHA256 */
-#define SCT_V1_HASHLEN  32
+# define SCT_V1_HASHLEN  32
 /* Minimum RSA key size, from RFC6962 */
-#define SCT_MIN_RSA_BITS 2048
+# define SCT_MIN_RSA_BITS 2048
 
 /*
  * From RFC6962: opaque SerializedSCT<1..2^16-1>; struct { SerializedSCT
  * sct_list <1..2^16-1>; } SignedCertificateTimestampList;
  */
 
-#define MAX_SCT_SIZE            65535
-#define MAX_SCT_LIST_SIZE      MAX_SCT_SIZE
+# define MAX_SCT_SIZE            65535
+# define MAX_SCT_LIST_SIZE      MAX_SCT_SIZE
 
 struct sct_st {
     int version;
@@ -109,3 +121,8 @@ struct sct_ctx_st {
 int sct_check_format(const SCT *sct);
 void sct_free_internal(SCT *sct);
 EVP_PKEY *sct_key_dup(EVP_PKEY *pkey);
+
+#ifdef  __cplusplus
+}
+#endif
+#endif
