@@ -898,6 +898,20 @@ rsa_test.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
 rsa_test.o: ../include/openssl/rand.h ../include/openssl/rsa.h
 rsa_test.o: ../include/openssl/safestack.h ../include/openssl/stack.h
 rsa_test.o: ../include/openssl/symhacks.h rsa_test.c
+sct_test.o: ../e_os.h ../include/openssl/asn1.h ../include/openssl/bio.h
+sct_test.o: ../include/openssl/buffer.h ../include/openssl/conf.h
+sct_test.o: ../include/openssl/crypto.h ../include/openssl/ct.h
+sct_test.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
+sct_test.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
+sct_test.o: ../include/openssl/evp.h ../include/openssl/lhash.h
+sct_test.o: ../include/openssl/obj_mac.h ../include/openssl/objects.h
+sct_test.o: ../include/openssl/opensslconf.h ../include/openssl/opensslv.h
+sct_test.o: ../include/openssl/ossl_typ.h ../include/openssl/pem.h
+sct_test.o: ../include/openssl/pem2.h ../include/openssl/pkcs7.h
+sct_test.o: ../include/openssl/safestack.h ../include/openssl/sha.h
+sct_test.o: ../include/openssl/stack.h ../include/openssl/symhacks.h
+sct_test.o: ../include/openssl/x509.h ../include/openssl/x509_vfy.h
+sct_test.o: ../include/openssl/x509v3.h sct_test.c
 sha1test.o: ../e_os.h ../include/openssl/asn1.h ../include/openssl/bio.h
 sha1test.o: ../include/openssl/crypto.h ../include/openssl/e_os2.h
 sha1test.o: ../include/openssl/evp.h ../include/openssl/obj_mac.h

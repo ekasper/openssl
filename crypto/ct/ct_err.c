@@ -70,6 +70,10 @@
 # define ERR_REASON(reason) ERR_PACK(ERR_LIB_CT,0,reason)
 
 static ERR_STRING_DATA CT_str_functs[] = {
+    {ERR_FUNC(CT_F_CTLOG_CREATE_LOG_FROM_JSON_FRAGMENT),
+     "CTLOG_CREATE_LOG_FROM_JSON_FRAGMENT"},
+    {ERR_FUNC(CT_F_CTLOG_STORE_LOAD_FILE), "CTLOG_STORE_LOAD_FILE"},
+    {ERR_FUNC(CT_F_CTLOG_WRITE_BIO), "CTLOG_WRITE_BIO"},
     {ERR_FUNC(CT_F_CT_BASE64_DECODE), "CT_base64_decode"},
     {ERR_FUNC(CT_F_CT_BASE64_ENCODE), "CT_base64_encode"},
     {ERR_FUNC(CT_F_CT_JSON_COMPLETE_ARRAY), "CT_json_complete_array"},
@@ -106,8 +110,11 @@ static ERR_STRING_DATA CT_str_reasons[] = {
      "ct json parse more than one object"},
     {ERR_REASON(CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED),
      "ct json parse unicode not supported"},
+    {ERR_REASON(CT_R_ENCODE_ERROR), "encode error"},
     {ERR_REASON(CT_R_ILLEGAL_CURVE), "illegal curve"},
     {ERR_REASON(CT_R_INVALID_LOGID_LENGTH), "invalid logid length"},
+    {ERR_REASON(CT_R_LOG_ERROR), "log error"},
+    {ERR_REASON(CT_R_NULL_INPUT), "null input"},
     {ERR_REASON(CT_R_RSA_KEY_TOO_WEAK), "rsa key too weak"},
     {ERR_REASON(CT_R_SCT_INVALID), "sct invalid"},
     {ERR_REASON(CT_R_SCT_INVALID_SIGNATURE), "sct invalid signature"},

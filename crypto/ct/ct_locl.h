@@ -83,6 +83,7 @@ extern "C" {
 typedef struct jf_st JSON_FRAGMENT;
 
 DECLARE_STACK_OF(JSON_FRAGMENT)
+DECLARE_STACK_OF(CTLOG)
 
 typedef enum {OBJ_ARRAY, OBJ_DICT, DICT_BEG, ARR_BEG, VAL_TRUE, VAL_FALSE,
               VAL_NULL, VAL_NUMBER, VAL_STRING, SEP_NAME, SEP_VAL,
@@ -135,6 +136,18 @@ struct jf_st {
     STACK_OF(JSON_FRAGMENT) *children;
 };
 
+struct certificate_transparency_log_st {
+    uint8_t                 log_id[SCT_V1_HASHLEN];
+    EVP_PKEY                *public_key;
+    unsigned char           *name;
+    uint16_t                name_len;
+};
+
+struct ctlog_store_st {
+    STACK_OF(CTLOG) *logs;
+};
+
+
 int sct_check_format(const SCT *sct);
 void sct_free_internal(SCT *sct);
 EVP_PKEY *sct_key_dup(EVP_PKEY *pkey);
@@ -151,6 +164,17 @@ const JSON_FRAGMENT *CT_json_get_value(const JSON_FRAGMENT *par,
 JSON_FRAGMENT *JSON_FRAGMENT_alloc(json_token_type t);
 int CT_json_complete_array(STACK_OF(JSON_FRAGMENT) *frags);
 int CT_json_complete_dict(STACK_OF(JSON_FRAGMENT) *frags);
+
+/* Create / free a CT log */
+CTLOG *CTLOG_new(const char *pk, uint16_t pkey_len, const char *name,
+                 uint16_t name_len);
+void CTLOG_free(CTLOG *log);
+CTLOG *CTLOG_create_log_from_json_fragment(const JSON_FRAGMENT *log);
+
+/* Log store management */
+CTLOG_STORE *CTLOG_STORE_new(void);
+void CTLOG_STORE_free(CTLOG_STORE *store);
+int CTLOG_write_bio(BIO *out, const CTLOG *log);
 
 #ifdef  __cplusplus
 }
