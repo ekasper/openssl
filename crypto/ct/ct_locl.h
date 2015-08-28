@@ -186,6 +186,14 @@ CTLOG_STORE *CTLOG_STORE_new(void);
 void CTLOG_STORE_free(CTLOG_STORE *store);
 int CTLOG_write_bio(BIO *out, const CTLOG *log);
 
+/* SCT management */
+int CT_server_info_encode_sct_list_bio(BIO *out, STACK_OF(SCT) *scts);
+int CT_tls_encode_sct_list_bio(BIO *out, STACK_OF(SCT) *scts);
+EVP_PKEY *CT_get_public_key_that_signed(const X509_STORE_CTX *ctx);
+int CT_parse_sct_list(const uint8_t *data, unsigned short size,
+                      STACK_OF(SCT) **results, sct_source_t src);
+int CT_validate_sct(SCT *sct, X509 *cert, EVP_PKEY *pkey, CTLOG_STORE *store);
+
 #ifdef  __cplusplus
 }
 #endif

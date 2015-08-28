@@ -16,9 +16,9 @@ GENERAL=Makefile
 
 LIB=$(TOP)/libcrypto.a
 LIBSRC= ct_b64.c ct_lib.c ctx_lib.c ct_oct.c ct_prn.c ct_vfy.c ct_err.c \
-        ct_json.c ct_log.c
+        ct_json.c ct_log.c ct_sct.c
 LIBOBJ= ct_b64.o ct_lib.o ctx_lib.o ct_oct.o ct_prn.o ct_vfy.o ct_err.o \
-        ct_json.o ct_log.o
+        ct_json.o ct_log.o ct_sct.o
 
 SRC= $(LIBSRC)
 
@@ -135,29 +135,6 @@ ct_lib.o: ../../include/openssl/x509.h ../../include/openssl/x509_vfy.h
 ct_lib.o: ../../ssl/packet_locl.h ../../ssl/record/record.h
 ct_lib.o: ../../ssl/ssl_locl.h ../include/internal/cryptlib.h ct_lib.c
 ct_lib.o: ct_locl.h
-ct_log.o: ../../crypto/ct/ct_locl.h ../../e_os.h ../../include/openssl/asn1.h
-ct_log.o: ../../include/openssl/bio.h ../../include/openssl/bn.h
-ct_log.o: ../../include/openssl/buffer.h ../../include/openssl/comp.h
-ct_log.o: ../../include/openssl/conf.h ../../include/openssl/crypto.h
-ct_log.o: ../../include/openssl/ct.h ../../include/openssl/dsa.h
-ct_log.o: ../../include/openssl/dtls1.h ../../include/openssl/e_os2.h
-ct_log.o: ../../include/openssl/ec.h ../../include/openssl/ecdh.h
-ct_log.o: ../../include/openssl/ecdsa.h ../../include/openssl/err.h
-ct_log.o: ../../include/openssl/evp.h ../../include/openssl/hmac.h
-ct_log.o: ../../include/openssl/lhash.h ../../include/openssl/obj_mac.h
-ct_log.o: ../../include/openssl/objects.h ../../include/openssl/ocsp.h
-ct_log.o: ../../include/openssl/opensslconf.h ../../include/openssl/opensslv.h
-ct_log.o: ../../include/openssl/ossl_typ.h ../../include/openssl/pem.h
-ct_log.o: ../../include/openssl/pem2.h ../../include/openssl/pkcs7.h
-ct_log.o: ../../include/openssl/pqueue.h ../../include/openssl/rsa.h
-ct_log.o: ../../include/openssl/safestack.h ../../include/openssl/sha.h
-ct_log.o: ../../include/openssl/srtp.h ../../include/openssl/ssl.h
-ct_log.o: ../../include/openssl/ssl2.h ../../include/openssl/ssl3.h
-ct_log.o: ../../include/openssl/stack.h ../../include/openssl/symhacks.h
-ct_log.o: ../../include/openssl/tls1.h ../../include/openssl/x509.h
-ct_log.o: ../../include/openssl/x509_vfy.h ../../include/openssl/x509v3.h
-ct_log.o: ../../ssl/packet_locl.h ../../ssl/record/record.h
-ct_log.o: ../../ssl/ssl_locl.h ../include/internal/cryptlib.h ct_log.c
 ct_oct.o: ../../e_os.h ../../include/openssl/asn1.h ../../include/openssl/bio.h
 ct_oct.o: ../../include/openssl/buffer.h ../../include/openssl/conf.h
 ct_oct.o: ../../include/openssl/crypto.h ../../include/openssl/ct.h

@@ -160,6 +160,9 @@ void ERR_load_CT_strings(void);
 # define CT_F_CT_JSON_COMPLETE_ARRAY                      124
 # define CT_F_CT_JSON_COMPLETE_DICT                       125
 # define CT_F_CT_PARSE_JSON                               126
+# define CT_F_CT_PARSE_SCT_LIST                           132
+# define CT_F_CT_SERVER_INFO_ENCODE_SCT_LIST_BIO          133
+# define CT_F_CT_VALIDATE_SCT                             134
 # define CT_F_D2I_SCT_LIST                                100
 # define CT_F_I2D_SCT_LIST                                101
 # define CT_F_I2O_SCT                                     102
@@ -186,10 +189,12 @@ void ERR_load_CT_strings(void);
 # define CT_F_SCT_VERIFY_V1                               120
 
 /* Reason codes. */
+# define CT_R_BAD_WRITE                                   118
 # define CT_R_CT_JSON_PARSE_ERROR                         112
 # define CT_R_CT_JSON_PARSE_MORE_THAN_ONE_OBJECT          113
 # define CT_R_CT_JSON_PARSE_UNICODE_NOT_SUPPORTED         114
 # define CT_R_ENCODE_ERROR                                115
+# define CT_R_ENCODE_FAILURE                              119
 # define CT_R_ILLEGAL_CURVE                               109
 # define CT_R_INVALID_LOGID_LENGTH                        100
 # define CT_R_LOG_ERROR                                   116
@@ -198,8 +203,10 @@ void ERR_load_CT_strings(void);
 # define CT_R_SCT_INVALID                                 101
 # define CT_R_SCT_INVALID_SIGNATURE                       102
 # define CT_R_SCT_LIST_INVALID                            103
+# define CT_R_SCT_LIST_MALLOC_FAILED                      120
 # define CT_R_SCT_LOG_ID_MISMATCH                         104
 # define CT_R_SCT_NOT_SET                                 105
+# define CT_R_SCT_SET_FAIL                                121
 # define CT_R_SCT_UNSUPPORTED_VERSION                     106
 # define CT_R_UNSUPPORTED_ALGORITHM                       111
 # define CT_R_UNSUPPORTED_ENTRY_TYPE                      107
