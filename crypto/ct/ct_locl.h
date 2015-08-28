@@ -146,6 +146,11 @@ struct jf_st {
     STACK_OF(JSON_FRAGMENT) *children;
 };
 
+struct ct_policy_eval_ctx_st {
+    ct_policy policy;
+    CTLOG_STORE *log_store;
+};
+
 struct certificate_transparency_log_st {
     uint8_t                 log_id[SCT_V1_HASHLEN];
     EVP_PKEY                *public_key;

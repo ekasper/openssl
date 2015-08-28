@@ -70,6 +70,7 @@ typedef struct sct_st SCT;
 typedef struct sct_ctx_st SCT_CTX;
 typedef struct ctlog_store_st CTLOG_STORE;
 typedef struct certificate_transparency_log_st CTLOG;
+typedef struct ct_policy_eval_ctx_st CT_POLICY_EVAL_CTX;
 
 typedef enum {
     UNSET_ENTRY = -1,
@@ -79,6 +80,15 @@ typedef enum {
 
 typedef enum {CT_TLS_EXTENSION, CT_X509V3_EXTENSION,
               CT_OCSP_STAPLED_RESPONSE, CT_SOURCE_UNKNOWN} sct_source_t;
+/*
+ * CT_POLICY_NONE - don't even request SCTs.
+ * CT_POLICY_REQUEST - request SCTs - setting has side effect of requesting
+ *               OCSP response (as SCTs can also be delivered in this manner).
+ *               CT_get_peer_scts() will return them. Will fail the connection
+ *               if there's an error, but does not require any SCTs be recognized.
+ * CT_POLICY_REQUIRE_ONE - same as request, but fail if at least 1 SCT does not validate.
+ */
+typedef enum {CT_POLICY_NONE, CT_POLICY_REQUEST, CT_POLICY_REQUIRE_ONE} ct_policy;
 
 SCT *SCT_new(void);
 void SCT_free(SCT *sct);
@@ -131,6 +141,19 @@ STACK_OF(SCT) *o2i_SCT_LIST(STACK_OF(SCT) **a, const unsigned char **pp,
                             size_t len);
 int i2o_SCT_LIST(STACK_OF(SCT) *a, unsigned char **pp);
 
+
+
+/*
+ * CT_POLICY_EVAL_CTX accessors and evaluation.
+ */
+CT_POLICY_EVAL_CTX *CT_POLICY_EVAL_CTX_new(void);
+void CT_POLICY_EVAL_CTX_free(CT_POLICY_EVAL_CTX *ctx);
+int CT_POLICY_EVAL_CTX_set_policy(CT_POLICY_EVAL_CTX *ctx, ct_policy policy);
+int CT_POLICY_EVAL_CTX_set0_log_store(CT_POLICY_EVAL_CTX *ctx, CTLOG_STORE *log_store);
+
+int CT_evaluate_policy(CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts,
+                       X509 *cert, EVP_PKEY *issuer_key);
+
 /*
  * Load JSON list of logs such as downloaded from:
  * http://www.certificate-transparency.org/known-logs
@@ -157,6 +180,7 @@ void ERR_load_CT_strings(void);
 # define CT_F_CTLOG_WRITE_BIO                             129
 # define CT_F_CT_BASE64_DECODE                            122
 # define CT_F_CT_BASE64_ENCODE                            123
+# define CT_F_CT_EVALUATE_POLICY                          135
 # define CT_F_CT_JSON_COMPLETE_ARRAY                      124
 # define CT_F_CT_JSON_COMPLETE_DICT                       125
 # define CT_F_CT_PARSE_JSON                               126
@@ -198,6 +222,7 @@ void ERR_load_CT_strings(void);
 # define CT_R_ILLEGAL_CURVE                               109
 # define CT_R_INVALID_LOGID_LENGTH                        100
 # define CT_R_LOG_ERROR                                   116
+# define CT_R_NOT_ENOUGH_SCTS                             122
 # define CT_R_NULL_INPUT                                  117
 # define CT_R_RSA_KEY_TOO_WEAK                            110
 # define CT_R_SCT_INVALID                                 101

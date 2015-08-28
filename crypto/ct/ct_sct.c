@@ -316,3 +316,101 @@ end:
 err:
     return rv;
 }
+
+CT_POLICY_EVAL_CTX *CT_POLICY_EVAL_CTX_new(void)
+{
+    CT_POLICY_EVAL_CTX *rv = OPENSSL_malloc(sizeof(CT_POLICY_EVAL_CTX));
+    if (rv) {
+        rv->policy = CT_POLICY_NONE;
+        rv->log_store = NULL;
+    }
+    return rv;
+}
+
+void CT_POLICY_EVAL_CTX_free(CT_POLICY_EVAL_CTX *ctx)
+{
+    OPENSSL_free(ctx);
+}
+
+int CT_POLICY_EVAL_CTX_set_policy(CT_POLICY_EVAL_CTX *ctx, ct_policy policy)
+{
+    int rv = 0;
+    if (ctx == NULL)
+        goto err;
+    ctx->policy = policy;
+    rv = 1;
+err:
+    return rv;
+}
+
+int CT_POLICY_EVAL_CTX_set0_log_store(CT_POLICY_EVAL_CTX *ctx, CTLOG_STORE *log_store)
+{
+    int rv = 0;
+    if (ctx == NULL)
+        goto err;
+    ctx->log_store = log_store;
+    rv = 1;
+err:
+    return rv;
+}
+
+/*
+ * Called after ServerHelloDone. If 1 is not returned, connection is failed.
+ */
+int CT_evaluate_policy(CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts,
+                       X509 *cert, EVP_PKEY *issuer_key)
+{
+    int fail_on_err = 0;
+    int rv = 0;
+    int parse_scts = 0;
+    int min_needed = 0;
+    int bad_count = 0;
+    int successful_validated_count = 0;
+
+    if ((ctx == NULL) || (cert == NULL)) {
+        CTerr(CT_F_CT_EVALUATE_POLICY, CT_R_NULL_INPUT);
+        goto err;
+    }
+
+    /* Enforce policy */
+    switch (ctx->policy) {
+    case CT_POLICY_REQUIRE_ONE:
+        min_needed = 1;
+        /* deliberately no break, should inherit what request gives you */
+    case CT_POLICY_REQUEST:
+        parse_scts = 1;
+        fail_on_err = 1;
+    case CT_POLICY_NONE:
+         break; /* nothing */
+    }
+    if (parse_scts) {
+        int count_scts = scts ? sk_SCT_num(scts) : 0;
+        int i;
+        for (i = 0; i < count_scts; i++) {
+            SCT *sct = sk_SCT_value(scts, i);
+            if (sct && cert) {
+                if (CT_validate_sct(sct, cert, issuer_key, ctx->log_store) != 1)
+                    goto err;
+                switch (sct->validation_status) {
+                case CT_STATUS_VALID:
+                    /* TODO(aeijdenberg): de-dupe? */
+                    successful_validated_count += 1;
+                break;
+                case CT_STATUS_INVALID:
+                    bad_count += 1;
+                break;
+                default: /* do nothing */
+                break;
+                }
+            }
+        }
+    }
+    if (successful_validated_count < min_needed) {
+        CTerr(CT_F_CT_EVALUATE_POLICY, CT_R_NOT_ENOUGH_SCTS);
+        goto err;
+    }
+
+    rv = bad_count ? 0 : 1;
+err:
+    return fail_on_err ? rv : 1;
+}
