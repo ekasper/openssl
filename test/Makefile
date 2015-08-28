@@ -30,6 +30,7 @@ LIBFIPS= -L.. -lfips
 START= @@@ START
 
 BNTEST=		bntest
+CTTEST=   cttest
 ECTEST=		ectest
 ECDSATEST=	ecdsatest
 ECDHTEST=	ecdhtest
@@ -148,6 +149,7 @@ apps:
 	@(cd ..; $(MAKE) DIRS=apps all)
 
 alltests: \
+	test_ct \
 	test_des test_idea test_sha test_md4 test_md5 test_hmac \
 	test_md2 test_mdc2 test_wp \
 	test_rmd test_rc2 test_rc4 test_rc5 test_bf test_cast \
@@ -355,6 +357,10 @@ test_ssl: keyU.ss certU.ss certCA.ss certP1.ss keyP1.ss certP2.ss keyP2.ss \
 	@sh ./testsslproxy keyP1.ss certP1.ss intP1.ss
 	@echo $(START) $@ -- key P2
 	@sh ./testsslproxy keyP2.ss certP2.ss intP2.ss
+
+test_ct: testct
+	@echo $(START) $@
+	@sh ./testct
 
 test_ca: ../apps/openssl$(EXE_EXT) testca CAss.cnf Uss.cnf
 	@if ../util/shlib_wrap.sh ../apps/openssl no-rsa; then \
@@ -658,12 +664,13 @@ casttest.o: ../e_os.h ../include/openssl/cast.h ../include/openssl/e_os2.h
 casttest.o: ../include/openssl/opensslconf.h casttest.c
 clienthellotest.o: ../include/openssl/asn1.h ../include/openssl/bio.h
 clienthellotest.o: ../include/openssl/buffer.h ../include/openssl/comp.h
-clienthellotest.o: ../include/openssl/crypto.h ../include/openssl/dtls1.h
-clienthellotest.o: ../include/openssl/e_os2.h ../include/openssl/ec.h
-clienthellotest.o: ../include/openssl/ecdh.h ../include/openssl/ecdsa.h
-clienthellotest.o: ../include/openssl/err.h ../include/openssl/evp.h
-clienthellotest.o: ../include/openssl/hmac.h ../include/openssl/lhash.h
-clienthellotest.o: ../include/openssl/obj_mac.h ../include/openssl/objects.h
+clienthellotest.o: ../include/openssl/crypto.h ../include/openssl/ct.h
+clienthellotest.o: ../include/openssl/dtls1.h ../include/openssl/e_os2.h
+clienthellotest.o: ../include/openssl/ec.h ../include/openssl/ecdh.h
+clienthellotest.o: ../include/openssl/ecdsa.h ../include/openssl/err.h
+clienthellotest.o: ../include/openssl/evp.h ../include/openssl/hmac.h
+clienthellotest.o: ../include/openssl/lhash.h ../include/openssl/obj_mac.h
+clienthellotest.o: ../include/openssl/objects.h
 clienthellotest.o: ../include/openssl/opensslconf.h
 clienthellotest.o: ../include/openssl/opensslv.h ../include/openssl/ossl_typ.h
 clienthellotest.o: ../include/openssl/pem.h ../include/openssl/pem2.h
