@@ -77,6 +77,9 @@ typedef enum {
     PRECERT_ENTRY = 1
 } log_entry_type_t;
 
+typedef enum {CT_TLS_EXTENSION, CT_X509V3_EXTENSION,
+              CT_OCSP_STAPLED_RESPONSE, CT_SOURCE_UNKNOWN} sct_source_t;
+
 SCT *SCT_new(void);
 void SCT_free(SCT *sct);
 SCT *o2i_SCT(SCT **psct, const unsigned char **in, size_t len);
@@ -84,6 +87,7 @@ int i2o_SCT(const SCT *sct, unsigned char **out);
 
 int SCT_set_version(SCT *sct, unsigned char version);
 int SCT_set_log_entry_type(SCT *sct, log_entry_type_t entry_type);
+int SCT_set_source(SCT *sct, sct_source_t source);
 int SCT_set0_logid(SCT *sct, unsigned char *logid, size_t logidlen);
 int SCT_set_timestamp(SCT *sct, uint64_t timestamp);
 int SCT_set_signature_nid(SCT *sct, int nid);
@@ -91,7 +95,8 @@ int SCT_set0_extensions(SCT *sct, unsigned char *ext, size_t extlen);
 int SCT_set0_signature(SCT *sct, unsigned char *sig, size_t siglen);
 
 int SCT_get_version(const SCT *sct, unsigned char *version);
-int SCT_get_log_entry_type(SCT *sct, log_entry_type_t * entry_type);
+int SCT_get_log_entry_type(SCT *sct, log_entry_type_t *entry_type);
+int SCT_get_source(SCT *sct, sct_source_t *source);
 int SCT_get0_logid(const SCT *sct, unsigned char **logid, size_t *logidlen);
 int SCT_get_timestamp(const SCT *sct, uint64_t * timestamp);
 int SCT_get_signature_nid(const SCT *sct);
@@ -166,6 +171,7 @@ void ERR_load_CT_strings(void);
 # define CT_F_SCT_GET0_SIGNATURE                          109
 # define CT_F_SCT_GET_LOG_ENTRY_TYPE                      110
 # define CT_F_SCT_GET_SIGNATURE_NID                       111
+# define CT_F_SCT_GET_SOURCE                              130
 # define CT_F_SCT_GET_TIMESTAMP                           112
 # define CT_F_SCT_GET_VERSION                             113
 # define CT_F_SCT_KEY_DUP                                 121
@@ -173,6 +179,7 @@ void ERR_load_CT_strings(void);
 # define CT_F_SCT_NEW_FROM_BASE64                         115
 # define CT_F_SCT_SET0_LOGID                              116
 # define CT_F_SCT_SET_LOG_ENTRY_TYPE                      117
+# define CT_F_SCT_SET_SOURCE                              131
 # define CT_F_SCT_SET_VERSION                             118
 # define CT_F_SCT_VERIFY                                  119
 # define CT_F_SCT_VERIFY_V1                               120

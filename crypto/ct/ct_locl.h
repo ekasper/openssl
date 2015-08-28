@@ -85,6 +85,10 @@ typedef struct jf_st JSON_FRAGMENT;
 DECLARE_STACK_OF(JSON_FRAGMENT)
 DECLARE_STACK_OF(CTLOG)
 
+typedef enum {CT_STATUS_NONE, CT_STATUS_UNKNOWN_LOG, CT_STATUS_VALID,
+              CT_STATUS_INVALID, CT_STATUS_UNVERIFIED,
+              CT_STATUS_UNKNOWN_VERSION} sct_validation;
+
 typedef enum {OBJ_ARRAY, OBJ_DICT, DICT_BEG, ARR_BEG, VAL_TRUE, VAL_FALSE,
               VAL_NULL, VAL_NUMBER, VAL_STRING, SEP_NAME, SEP_VAL,
               NAME_VAL} json_token_type;
@@ -109,6 +113,12 @@ struct sct_st {
     size_t siglen;
     /* Log entry type */
     log_entry_type_t entry_type;
+    /* Where did this SCT come from? */
+    sct_source_t source;
+    /* Has this been validated? */
+    sct_validation validation_status;
+    /* Which log is it? */
+    CTLOG *log;
 };
 
 /* The following parameters are used during SCT verification */

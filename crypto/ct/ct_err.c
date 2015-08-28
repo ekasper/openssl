@@ -71,9 +71,9 @@
 
 static ERR_STRING_DATA CT_str_functs[] = {
     {ERR_FUNC(CT_F_CTLOG_CREATE_LOG_FROM_JSON_FRAGMENT),
-     "CTLOG_CREATE_LOG_FROM_JSON_FRAGMENT"},
-    {ERR_FUNC(CT_F_CTLOG_STORE_LOAD_FILE), "CTLOG_STORE_LOAD_FILE"},
-    {ERR_FUNC(CT_F_CTLOG_WRITE_BIO), "CTLOG_WRITE_BIO"},
+     "CTLOG_create_log_from_json_fragment"},
+    {ERR_FUNC(CT_F_CTLOG_STORE_LOAD_FILE), "CTLOG_STORE_load_file"},
+    {ERR_FUNC(CT_F_CTLOG_WRITE_BIO), "CTLOG_write_bio"},
     {ERR_FUNC(CT_F_CT_BASE64_DECODE), "CT_base64_decode"},
     {ERR_FUNC(CT_F_CT_BASE64_ENCODE), "CT_base64_encode"},
     {ERR_FUNC(CT_F_CT_JSON_COMPLETE_ARRAY), "CT_json_complete_array"},
@@ -91,6 +91,7 @@ static ERR_STRING_DATA CT_str_functs[] = {
     {ERR_FUNC(CT_F_SCT_GET0_SIGNATURE), "SCT_get0_signature"},
     {ERR_FUNC(CT_F_SCT_GET_LOG_ENTRY_TYPE), "SCT_get_log_entry_type"},
     {ERR_FUNC(CT_F_SCT_GET_SIGNATURE_NID), "SCT_get_signature_nid"},
+    {ERR_FUNC(CT_F_SCT_GET_SOURCE), "SCT_get_source"},
     {ERR_FUNC(CT_F_SCT_GET_TIMESTAMP), "SCT_get_timestamp"},
     {ERR_FUNC(CT_F_SCT_GET_VERSION), "SCT_get_version"},
     {ERR_FUNC(CT_F_SCT_KEY_DUP), "sct_key_dup"},
@@ -98,6 +99,7 @@ static ERR_STRING_DATA CT_str_functs[] = {
     {ERR_FUNC(CT_F_SCT_NEW_FROM_BASE64), "SCT_new_from_base64"},
     {ERR_FUNC(CT_F_SCT_SET0_LOGID), "SCT_set0_logid"},
     {ERR_FUNC(CT_F_SCT_SET_LOG_ENTRY_TYPE), "SCT_set_log_entry_type"},
+    {ERR_FUNC(CT_F_SCT_SET_SOURCE), "SCT_set_source"},
     {ERR_FUNC(CT_F_SCT_SET_VERSION), "SCT_set_version"},
     {ERR_FUNC(CT_F_SCT_VERIFY), "SCT_verify"},
     {ERR_FUNC(CT_F_SCT_VERIFY_V1), "SCT_verify_v1"},
