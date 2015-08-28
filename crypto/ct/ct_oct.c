@@ -95,6 +95,11 @@ static int i2d_SCT_LIST(STACK_OF(SCT) *a, unsigned char **pp);
 static int i2r_SCT_LIST(X509V3_EXT_METHOD *method, STACK_OF(SCT) *sct_list,
                         BIO *out, int indent);
 
+static char *i2s_poison(const X509V3_EXT_METHOD *method, void *val)
+{
+    return OPENSSL_strdup("NULL");
+}
+
 const X509V3_EXT_METHOD v3_ct_scts[] = {
     {NID_ct_precert_scts, 0, NULL,
      0, (X509V3_EXT_FREE)SCT_LIST_free,
@@ -102,6 +107,10 @@ const X509V3_EXT_METHOD v3_ct_scts[] = {
      0, 0, 0, 0,
      (X509V3_EXT_I2R)i2r_SCT_LIST, 0,
      NULL},
+
+    {NID_ct_precert_poison, 0, ASN1_ITEM_rptr(ASN1_NULL),
+     0, 0, 0, 0, i2s_poison, 0,
+     0, 0, 0, 0, NULL},
 
     {NID_ct_cert_scts, 0, NULL,
      0, (X509V3_EXT_FREE)SCT_LIST_free,
