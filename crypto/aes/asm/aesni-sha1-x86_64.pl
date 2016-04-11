@@ -552,9 +552,9 @@ my @body_00_19 = (
 	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
 	);
 
-sub body_00_19 () {	# ((c^d)&b)^d
+sub body_00_19_enc () {	# ((c^d)&b)^d
     # on start @T[0]=(c^d)&b
-    return &body_20_39() if ($rx==19); $rx++;
+    return &body_20_39_enc() if ($rx==19); $rx++;
 
     use integer;
     my ($k,$n);
@@ -583,9 +583,9 @@ my @body_20_39 = (
 	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
 	);
 
-sub body_20_39 () {	# b^d^c
+sub body_20_39_enc () {	# b^d^c
     # on entry @T[0]=b^d
-    return &body_40_59() if ($rx==39); $rx++;
+    return &body_40_59_enc() if ($rx==39); $rx++;
 
     use integer;
     my ($k,$n);
@@ -618,7 +618,7 @@ my @body_40_59 = (
 	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
 	);
 
-sub body_40_59 () {	# ((b^c)&(c^d))^c
+sub body_40_59_enc () {	# ((b^c)&(c^d))^c
     # on entry @T[0]=(b^c), (c^=d)
     $rx++;
 
@@ -637,30 +637,30 @@ $code.=<<___;
 .align	32
 .Loop_ssse3:
 ___
-	&Xupdate_ssse3_16_31(\&body_00_19);
-	&Xupdate_ssse3_16_31(\&body_00_19);
-	&Xupdate_ssse3_16_31(\&body_00_19);
-	&Xupdate_ssse3_16_31(\&body_00_19);
-	&Xupdate_ssse3_32_79(\&body_00_19);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xupdate_ssse3_32_79(\&body_40_59);
-	&Xupdate_ssse3_32_79(\&body_40_59);
-	&Xupdate_ssse3_32_79(\&body_40_59);
-	&Xupdate_ssse3_32_79(\&body_40_59);
-	&Xupdate_ssse3_32_79(\&body_40_59);
-	&Xupdate_ssse3_32_79(\&body_20_39);
-	&Xuplast_ssse3_80(\&body_20_39,".Ldone_ssse3");	# can jump to "done"
+	&Xupdate_ssse3_16_31(\&body_00_19_enc);
+	&Xupdate_ssse3_16_31(\&body_00_19_enc);
+	&Xupdate_ssse3_16_31(\&body_00_19_enc);
+	&Xupdate_ssse3_16_31(\&body_00_19_enc);
+	&Xupdate_ssse3_32_79(\&body_00_19_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xupdate_ssse3_32_79(\&body_40_59_enc);
+	&Xupdate_ssse3_32_79(\&body_40_59_enc);
+	&Xupdate_ssse3_32_79(\&body_40_59_enc);
+	&Xupdate_ssse3_32_79(\&body_40_59_enc);
+	&Xupdate_ssse3_32_79(\&body_40_59_enc);
+	&Xupdate_ssse3_32_79(\&body_20_39_enc);
+	&Xuplast_ssse3_80(\&body_20_39_enc,".Ldone_ssse3");	# can jump to "done"
 
 				$saved_j=$j; @saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 
-	&Xloop_ssse3(\&body_20_39);
-	&Xloop_ssse3(\&body_20_39);
-	&Xloop_ssse3(\&body_20_39);
+	&Xloop_ssse3(\&body_20_39_enc);
+	&Xloop_ssse3(\&body_20_39_enc);
+	&Xloop_ssse3(\&body_20_39_enc);
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -687,9 +687,9 @@ ___
 				$jj=$j=$saved_j; @V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 
-	&Xtail_ssse3(\&body_20_39);
-	&Xtail_ssse3(\&body_20_39);
-	&Xtail_ssse3(\&body_20_39);
+	&Xtail_ssse3(\&body_20_39_enc);
+	&Xtail_ssse3(\&body_20_39_enc);
+	&Xtail_ssse3(\&body_20_39_enc);
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -1349,30 +1349,30 @@ $code.=<<___;
 .align	32
 .Loop_avx:
 ___
-	&Xupdate_avx_16_31(\&body_00_19);
-	&Xupdate_avx_16_31(\&body_00_19);
-	&Xupdate_avx_16_31(\&body_00_19);
-	&Xupdate_avx_16_31(\&body_00_19);
-	&Xupdate_avx_32_79(\&body_00_19);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xupdate_avx_32_79(\&body_40_59);
-	&Xupdate_avx_32_79(\&body_40_59);
-	&Xupdate_avx_32_79(\&body_40_59);
-	&Xupdate_avx_32_79(\&body_40_59);
-	&Xupdate_avx_32_79(\&body_40_59);
-	&Xupdate_avx_32_79(\&body_20_39);
-	&Xuplast_avx_80(\&body_20_39,".Ldone_avx");	# can jump to "done"
+	&Xupdate_avx_16_31(\&body_00_19_enc);
+	&Xupdate_avx_16_31(\&body_00_19_enc);
+	&Xupdate_avx_16_31(\&body_00_19_enc);
+	&Xupdate_avx_16_31(\&body_00_19_enc);
+	&Xupdate_avx_32_79(\&body_00_19_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xupdate_avx_32_79(\&body_40_59_enc);
+	&Xupdate_avx_32_79(\&body_40_59_enc);
+	&Xupdate_avx_32_79(\&body_40_59_enc);
+	&Xupdate_avx_32_79(\&body_40_59_enc);
+	&Xupdate_avx_32_79(\&body_40_59_enc);
+	&Xupdate_avx_32_79(\&body_20_39_enc);
+	&Xuplast_avx_80(\&body_20_39_enc,".Ldone_avx");	# can jump to "done"
 
 				$saved_j=$j; @saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 
-	&Xloop_avx(\&body_20_39);
-	&Xloop_avx(\&body_20_39);
-	&Xloop_avx(\&body_20_39);
+	&Xloop_avx(\&body_20_39_enc);
+	&Xloop_avx(\&body_20_39_enc);
+	&Xloop_avx(\&body_20_39_enc);
 
 $code.=<<___;
 	vmovups	$iv,48($out,$in0)		# write output
@@ -1399,9 +1399,9 @@ ___
 				$jj=$j=$saved_j; @V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 
-	&Xtail_avx(\&body_20_39);
-	&Xtail_avx(\&body_20_39);
-	&Xtail_avx(\&body_20_39);
+	&Xtail_avx(\&body_20_39_enc);
+	&Xtail_avx(\&body_20_39_enc);
+	&Xtail_avx(\&body_20_39_enc);
 
 $code.=<<___;
 	vmovups	$iv,48($out,$in0)		# write output
