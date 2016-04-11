@@ -535,6 +535,22 @@ sub Xtail_ssse3()
 	foreach (@insns) { eval; }
 }
 
+# Recall a SHA-1 round, starting from state V = (a, b, c, d, e).
+# <<< is rotation, W is the input word, and K a round constant.
+# F is a nonlinear function that differs between rounds.
+
+# b = b >>> 5
+# e += F(b, c, d) + (a <<< 5) + W_t + K_t
+# V = (e, a, b, c, d)
+
+# SHA-1 rounds 00-19. The nonlinear function is
+# F = (b & (c ^ d)) ^ d
+#
+# Each round also precomputes b & (c ^ d) for the next round.
+# Therefore, this block is in fact used for full rounds 00-18,
+# and for the precomputation for round 19.
+# Round 19 itself is deferred to body_20_39 so that it can
+# interleave with the precomputation for round 20.
 my @body_00_19 = (
 	'($a,$b,$c,$d,$e)=@V;'.
 	'&$_ror	($b,$j?7:2);',	# $b>>>2
@@ -552,7 +568,7 @@ my @body_00_19 = (
 	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
 	);
 
-sub body_00_19_enc () {	# ((c^d)&b)^d
+sub body_00_19_enc () {
     # on start @T[0]=(c^d)&b
     return &body_20_39_enc() if ($rx==19); $rx++;
 
@@ -568,6 +584,14 @@ sub body_00_19_enc () {	# ((c^d)&b)^d
     return @r;
 }
 
+# SHA-1 rounds 20-39. The nonlinear function is
+# F = b ^ c ^ d
+#
+# Each round also precomputes b ^ d for the next round.
+# Therefore, this block is in fact used for full rounds 20-38,
+# and for the precomputation for round 39.
+# Round 39 itself is deferred to body_40_59 so that it can
+# interleave with the precomputation for round 40.
 my @body_20_39 = (
 	'($a,$b,$c,$d,$e)=@V;'.
 	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
@@ -599,6 +623,14 @@ sub body_20_39_enc () {	# b^d^c
     return @r;
 }
 
+# SHA-1 rounds 40-59. The nonlinear function is
+# F = (b ^ c) & (c ^ d) ^ c
+#
+# Rounds 40-58 precompute (b ^ c) for the next round,
+# and set c = c ^ d.
+#
+# Unlike previous body blocks that defer the processing of the last round,
+# this block competes round 59 and precomputes (b ^ d) for round 60.
 my @body_40_59 = (
 	'($a,$b,$c,$d,$e)=@V;'.
 	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
