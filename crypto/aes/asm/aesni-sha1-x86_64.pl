@@ -633,6 +633,13 @@ sub body_40_59_enc () {	# ((b^c)&(c^d))^c
 
     return @r;
 }
+
+# In SHA-1 rounds 61-80, the nonlinear function F is the same
+# as in rounds 20-39.
+sub body_60_79_enc {
+    return body_20_39_enc();
+}
+
 $code.=<<___;
 .align	32
 .Loop_ssse3:
@@ -652,15 +659,15 @@ ___
 	&Xupdate_ssse3_32_79(\&body_40_59_enc);
 	&Xupdate_ssse3_32_79(\&body_40_59_enc);
 	&Xupdate_ssse3_32_79(\&body_40_59_enc);
-	&Xupdate_ssse3_32_79(\&body_20_39_enc);
-	&Xuplast_ssse3_80(\&body_20_39_enc,".Ldone_ssse3");	# can jump to "done"
+	&Xupdate_ssse3_32_79(\&body_60_79_enc);
+	&Xuplast_ssse3_80(\&body_60_79_enc,".Ldone_ssse3");	# can jump to "done"
 
 				$saved_j=$j; @saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 
-	&Xloop_ssse3(\&body_20_39_enc);
-	&Xloop_ssse3(\&body_20_39_enc);
-	&Xloop_ssse3(\&body_20_39_enc);
+	&Xloop_ssse3(\&body_60_79_enc);
+	&Xloop_ssse3(\&body_60_79_enc);
+	&Xloop_ssse3(\&body_60_79_enc);
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -687,9 +694,9 @@ ___
 				$jj=$j=$saved_j; @V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 
-	&Xtail_ssse3(\&body_20_39_enc);
-	&Xtail_ssse3(\&body_20_39_enc);
-	&Xtail_ssse3(\&body_20_39_enc);
+	&Xtail_ssse3(\&body_60_79_enc);
+	&Xtail_ssse3(\&body_60_79_enc);
+	&Xtail_ssse3(\&body_60_79_enc);
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -813,6 +820,12 @@ sub body_40_59_dec () {	# ((b^c)&(c^d))^c
     return @r;
 }
 
+# In SHA-1 rounds 61-80, the nonlinear function F is the same
+# as in rounds 20-39.
+sub body_60_79_dec() {
+    return body_20_39_dec();
+}
+
 $code.=<<___;
 .globl	aesni256_cbc_sha1_dec
 .type	aesni256_cbc_sha1_dec,\@abi-omnipotent
@@ -925,15 +938,15 @@ ___
 	&Xupdate_ssse3_32_79(\&body_40_59_dec);
 	&Xupdate_ssse3_32_79(\&body_40_59_dec);
 	&Xupdate_ssse3_32_79(\&body_40_59_dec);
-	&Xupdate_ssse3_32_79(\&body_20_39_dec);
-	&Xuplast_ssse3_80(\&body_20_39_dec,".Ldone_dec_ssse3");	# can jump to "done"
+	&Xupdate_ssse3_32_79(\&body_60_79_dec);
+	&Xuplast_ssse3_80(\&body_60_79_dec,".Ldone_dec_ssse3");	# can jump to "done"
 
 				$saved_j=$j;   @saved_V=@V;
 				$saved_rx=$rx;
 
-	&Xloop_ssse3(\&body_20_39_dec);
-	&Xloop_ssse3(\&body_20_39_dec);
-	&Xloop_ssse3(\&body_20_39_dec);
+	&Xloop_ssse3(\&body_60_79_dec);
+	&Xloop_ssse3(\&body_60_79_dec);
+	&Xloop_ssse3(\&body_60_79_dec);
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
@@ -960,9 +973,9 @@ ___
 				$jj=$j=$saved_j; @V=@saved_V;
 				$rx=$saved_rx;
 
-	&Xtail_ssse3(\&body_20_39_dec);
-	&Xtail_ssse3(\&body_20_39_dec);
-	&Xtail_ssse3(\&body_20_39_dec);
+	&Xtail_ssse3(\&body_60_79_dec);
+	&Xtail_ssse3(\&body_60_79_dec);
+	&Xtail_ssse3(\&body_60_79_dec);
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
