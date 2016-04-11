@@ -543,16 +543,31 @@ sub Xtail_ssse3()
 # e += F(b, c, d) + (a <<< 5) + W_t + K_t
 # V = (e, a, b, c, d)
 
+# Each round also precomputes F partially for the next round.
+
+my $sha1_round_prologue =
+	'($a,$b,$c,$d,$e)=@V;';
+
+my $sha1_round_epilogue =
+	'$j++;' .
+	# V = (e, a, b, c, d)
+	'unshift(@V,pop(@V));' .
+	# Precomputation is read from T[0] in the current round,
+	# and written into T[1] for the next round.
+	# Swap T[0] and T[1] to hand over the precomputation to the
+	# next round.
+	'unshift(@T,pop(@T));';
+
 # SHA-1 rounds 00-19. The nonlinear function is
 # F = (b & (c ^ d)) ^ d
 #
-# Each round also precomputes b & (c ^ d) for the next round.
+# Each round precomputes b & (c ^ d) for the next round.
 # Therefore, this block is in fact used for full rounds 00-18,
 # and for the precomputation for round 19.
 # Round 19 itself is deferred to body_20_39 so that it can
 # interleave with the precomputation for round 20.
 my @body_00_19 = (
-	'($a,$b,$c,$d,$e)=@V;'.
+	$sha1_round_prologue .
 	'&$_ror	($b,$j?7:2);',	# $b>>>2
 	'&xor	(@T[0],$d);',
 	'&mov	(@T[1],$a);',	# $b for next round
@@ -565,7 +580,8 @@ my @body_00_19 = (
 	'&and	(@T[1],$b);',	# ($b&($c^$d)) for next round
 
 	'&xor	($b,$c);',	# restore $b
-	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
+	'&add	($e,$a);' .
+	$sha1_round_epilogue
 	);
 
 sub body_00_19_enc () {
@@ -587,13 +603,13 @@ sub body_00_19_enc () {
 # SHA-1 rounds 20-39. The nonlinear function is
 # F = b ^ c ^ d
 #
-# Each round also precomputes b ^ d for the next round.
+# Each round precomputes b ^ d for the next round.
 # Therefore, this block is in fact used for full rounds 20-38,
 # and for the precomputation for round 39.
 # Round 39 itself is deferred to body_40_59 so that it can
 # interleave with the precomputation for round 40.
 my @body_20_39 = (
-	'($a,$b,$c,$d,$e)=@V;'.
+	$sha1_round_prologue .
 	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
 	'&xor	(@T[0],$d)	if($j==19);'.
 	'&xor	(@T[0],$c)	if($j> 19);',	# ($b^$d^$c)
@@ -604,7 +620,8 @@ my @body_20_39 = (
 	'&xor	(@T[1],$c)	if ($j< 79);',	# $b^$d for next round
 
 	'&$_ror	($b,7);',	# $b>>>2
-	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
+	'&add	($e,$a);' .
+	$sha1_round_epilogue
 	);
 
 sub body_20_39_enc () {	# b^d^c
@@ -632,7 +649,7 @@ sub body_20_39_enc () {	# b^d^c
 # Unlike previous body blocks that defer the processing of the last round,
 # this block competes round 59 and precomputes (b ^ d) for round 60.
 my @body_40_59 = (
-	'($a,$b,$c,$d,$e)=@V;'.
+	$sha1_round_prologue .
 	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
 	'&and	(@T[0],$c)	if ($j>=40);',	# (b^c)&(c^d)
 	'&xor	($c,$d)		if ($j>=40);',	# restore $c
@@ -647,7 +664,8 @@ my @body_40_59 = (
 	'&xor	(@T[1],$b)	if ($j< 59);',	# b^c for next round
 
 	'&xor	($b,$c)		if ($j< 59);',	# c^d for next round
-	'&add	($e,$a);'	.'$j++; unshift(@V,pop(@V)); unshift(@T,pop(@T));'
+	'&add	($e,$a);' .
+	$sha1_round_epilogue
 	);
 
 sub body_40_59_enc () {	# ((b^c)&(c^d))^c
