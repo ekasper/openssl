@@ -535,16 +535,47 @@ sub Xtail_ssse3()
 	foreach (@insns) { eval; }
 }
 
+# We distribute AES encryptions evenly in every block of 20 SHA-1 rounds.
+#
+# A generic way to compute the interleave that automatically adjusts
+# the offsets, should the number of instructions in a SHA-1 round change.
+#
+# Assumes that $n <= $num_aes_enc, i.e., that there is at most one
+# AES encryption per SHA-1 round.
+sub interleave_offset {
+    # $n is the number of instructions per SHA-1 round.
+    # The number of instructions may be different in the 20th round
+    # of each block, but this was ignored in the original code, so
+    # we keep it so.
+    my ($n, $rx, $num_aes_enc) = @_;
+
+    use integer;
+    # Offsets are roughly evenly distributed according to the following rule,
+    # unchanged from the original code.
+    # Rounds 0..$rx contain a total ($rx + 1) * $num_aes_enc / 20 encryptions,
+    # and the interval is 20 * $n / $num_aes_enc.
+    my $offset = (($rx + 1) * $num_aes_enc / 20) * 20 * $n / $num_aes_enc;
+
+    # If the indices don't match, then we jump over this block;
+    # encryptions are sparse and not every round gets an interleave.
+    if ($rx == $offset / $n) {
+        return $offset % $n;
+    }
+
+    return undef;
+}
+
+# First, prepare the SHA-1 blocks for interleaving.
+#
 # Recall a SHA-1 round, starting from state V = (a, b, c, d, e).
 # <<< is rotation, W is the input word, and K a round constant.
 # F is a nonlinear function that differs between rounds.
-
+#
 # b = b >>> 5
 # e += F(b, c, d) + (a <<< 5) + W_t + K_t
 # V = (e, a, b, c, d)
-
+#
 # Each round also precomputes F partially for the next round.
-
 my $sha1_round_prologue =
 	'($a,$b,$c,$d,$e)=@V;';
 
@@ -585,18 +616,17 @@ my @body_00_19 = (
 	);
 
 sub body_00_19_enc () {
-    # on start @T[0]=(c^d)&b
-    return &body_20_39_enc() if ($rx==19); $rx++;
+    if ($rx == 19) {
+        return &body_20_39_enc();
+    }
+    my @interleave = @body_00_19;
+    # In rounds 00-19, we interleave 12 AES instructions.
+    my $offset = interleave_offset(scalar @body_00_19, $rx, 12);
 
-    use integer;
-    my ($k,$n);
-    my @r=@body_00_19;
+    @interleave[$offset] .= '&$aesenc();' if defined $offset;
+    $rx++;
 
-    $n = scalar(@r);
-    $k = (($rx)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
-    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n);
-
-    return @r;
+    return @interleave;
 }
 
 # SHA-1 rounds 20-39. The nonlinear function is
@@ -624,18 +654,17 @@ my @body_20_39 = (
 	);
 
 sub body_20_39_enc () {	# b^d^c
-    # on entry @T[0]=b^d
-    return &body_40_59_enc() if ($rx==39); $rx++;
+    if ($rx == 39) {
+        return &body_40_59_enc();
+    }
+    my @interleave = @body_20_39;
+    # In rounds 20-39, we interleave 8 AES instructions.
+    my $offset = interleave_offset(scalar @body_20_39, $rx, 8);
 
-    use integer;
-    my ($k,$n);
-    my @r=@body_20_39;
+    @interleave[$offset] .= '&$aesenc();' if defined $offset;
+    $rx++;
 
-    $n = scalar(@r);
-    $k = (($rx)*8/20)*20*$n/8;	# 8 aesencs per these 20 rounds
-    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n && $rx!=20);
-
-    return @r;
+    return @interleave;
 }
 
 # SHA-1 rounds 40-59. The nonlinear function is
@@ -667,18 +696,14 @@ my @body_40_59 = (
 	);
 
 sub body_40_59_enc () {	# ((b^c)&(c^d))^c
-    # on entry @T[0]=(b^c), (c^=d)
+    my @interleave = @body_40_59;
+    # In rounds 40-59, we interleave 12 AES instructions.
+    my $offset = interleave_offset(scalar @body_40_59, $rx, 12);
+
+    @interleave[$offset] .= '&$aesenc();' if defined $offset;
     $rx++;
 
-    use integer;
-    my ($k,$n);
-    my @r=@body_40_59;
-
-    $n = scalar(@r);
-    $k=(($rx)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
-    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n && $rx!=40);
-
-    return @r;
+    return @interleave;
 }
 
 # In SHA-1 rounds 61-80, the nonlinear function F is the same
