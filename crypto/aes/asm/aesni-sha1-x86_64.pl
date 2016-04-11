@@ -156,7 +156,7 @@ my @X=map("%xmm$_",(4..7,0..3));
 my @Tx=map("%xmm$_",(8..10));
 my @V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
 my @T=("%esi","%edi");
-my $j=0; my $jj=0; my $r=0; my $sn=0; my $rx=0;
+my $j=0; my $r=0; my $sn=0; my $rx=0;
 my $K_XX_XX="%r11";
 my ($rndkey0,$iv,$in)=map("%xmm$_",(11..13));			# for enc
 my @rndkey=("%xmm14","%xmm15");					# for enc
@@ -592,10 +592,9 @@ sub body_00_19_enc () {
     my ($k,$n);
     my @r=@body_00_19;
 
-	$n = scalar(@r);
-	$k = (($jj+1)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
-	@r[$k%$n].='&$aesenc();'	if ($jj==$k/$n);
-	$jj++;
+    $n = scalar(@r);
+    $k = (($rx)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
+    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n);
 
     return @r;
 }
@@ -632,10 +631,9 @@ sub body_20_39_enc () {	# b^d^c
     my ($k,$n);
     my @r=@body_20_39;
 
-	$n = scalar(@r);
-	$k = (($jj+1)*8/20)*20*$n/8;	# 8 aesencs per these 20 rounds
-	@r[$k%$n].='&$aesenc();'	if ($jj==$k/$n && $rx!=20);
-	$jj++;
+    $n = scalar(@r);
+    $k = (($rx)*8/20)*20*$n/8;	# 8 aesencs per these 20 rounds
+    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n && $rx!=20);
 
     return @r;
 }
@@ -676,10 +674,9 @@ sub body_40_59_enc () {	# ((b^c)&(c^d))^c
     my ($k,$n);
     my @r=@body_40_59;
 
-	$n = scalar(@r);
-	$k=(($jj+1)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
-	@r[$k%$n].='&$aesenc();'	if ($jj==$k/$n && $rx!=40);
-	$jj++;
+    $n = scalar(@r);
+    $k=(($rx)*12/20)*20*$n/12;	# 12 aesencs per these 20 rounds
+    @r[$k%$n].='&$aesenc();'	if (($rx-1)==$k/$n && $rx!=40);
 
     return @r;
 }
@@ -714,6 +711,7 @@ ___
 
 				$saved_j=$j; @saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
+				$saved_rx=$rx;
 
 	&Xloop_ssse3(\&body_60_79_enc);
 	&Xloop_ssse3(\&body_60_79_enc);
@@ -741,8 +739,9 @@ $code.=<<___;
 
 .Ldone_ssse3:
 ___
-				$jj=$j=$saved_j; @V=@saved_V;
+				$j=$saved_j; @V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
+				$rx=$saved_rx;
 
 	&Xtail_ssse3(\&body_60_79_enc);
 	&Xtail_ssse3(\&body_60_79_enc);
@@ -793,7 +792,7 @@ ___
 						if ($stitched_decrypt) {{{
 # reset
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
-$j=$jj=$r=$rx=0;
+$j=$r=$rx=0;
 $Xi=4;
 
 # reassign for Atom Silvermont (see above)
@@ -850,7 +849,7 @@ sub body_00_19_dec () {	# ((c^d)&b)^d
 sub body_20_39_dec () {	# b^d^c
     # on entry @T[0]=b^d
     return &body_40_59_dec() if ($rx==39);
-  
+
     my @r=@body_20_39;
 
 	unshift (@r,@aes256_dec[$rx])	if (@aes256_dec[$rx]);
@@ -1020,7 +1019,7 @@ $code.=<<___;
 
 .Ldone_dec_ssse3:
 ___
-				$jj=$j=$saved_j; @V=@saved_V;
+				$j=$saved_j; @V=@saved_V;
 				$rx=$saved_rx;
 
 	&Xtail_ssse3(\&body_60_79_dec);
@@ -1067,7 +1066,7 @@ $code.=<<___;
 .size	aesni256_cbc_sha1_dec_ssse3,.-aesni256_cbc_sha1_dec_ssse3
 ___
 						}}}
-$j=$jj=$r=$rx=0;
+$j=$r=$rx=0;
 
 if ($avx) {
 my ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
@@ -1432,6 +1431,7 @@ ___
 
 				$saved_j=$j; @saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
+				$saved_rx=$rx;
 
 	&Xloop_avx(\&body_20_39_enc);
 	&Xloop_avx(\&body_20_39_enc);
@@ -1459,8 +1459,9 @@ $code.=<<___;
 
 .Ldone_avx:
 ___
-				$jj=$j=$saved_j; @V=@saved_V;
+				$j=$saved_j; @V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
+				$rx=$saved_rx;
 
 	&Xtail_avx(\&body_20_39_enc);
 	&Xtail_avx(\&body_20_39_enc);
@@ -1513,7 +1514,7 @@ ___
 # reset
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
 
-$j=$jj=$r=$rx=0;
+$j=$r=$rx=0;
 $Xi=4;
 
 @aes256_dec = (
@@ -1671,7 +1672,7 @@ $code.=<<___;
 
 .Ldone_dec_avx:
 ___
-				$jj=$j=$saved_j; @V=@saved_V;
+				$j=$saved_j; @V=@saved_V;
 				$rx=$saved_rx;
 
 	&Xtail_avx(\&body_20_39_dec);
