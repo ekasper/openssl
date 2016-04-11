@@ -156,7 +156,7 @@ my @X=map("%xmm$_",(4..7,0..3));
 my @Tx=map("%xmm$_",(8..10));
 my @V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
 my @T=("%esi","%edi");
-my $j=0; my $r=0; my $sn=0; my $rx=0;
+my $r=0; my $sn=0; my $rx=0;
 my $K_XX_XX="%r11";
 my ($rndkey0,$iv,$in)=map("%xmm$_",(11..13));			# for enc
 my @rndkey=("%xmm14","%xmm15");					# for enc
@@ -580,7 +580,6 @@ my $sha1_round_prologue =
 	'($a,$b,$c,$d,$e)=@V;';
 
 my $sha1_round_epilogue =
-	'$j++;' .
 	# V = (e, a, b, c, d)
 	'unshift(@V,pop(@V));' .
 	# Precomputation is read from T[0] in the current round,
@@ -597,13 +596,24 @@ my $sha1_round_epilogue =
 # and for the precomputation for round 19.
 # Round 19 itself is deferred to body_20_39 so that it can
 # interleave with the precomputation for round 20.
-my @body_00_19 = (
+sub sha1_00_19 {
+    my ($rx) = @_;
+    # In every round apart from the first, b is shifted left by 5 by the
+    # previous round.
+    my $rotate = $rx ? 7 : 2;
+    # The outer-layer interleaving loads data and round constants onto the
+    # stack in a circular fashion. The stack region has space for 16 rounds, so
+    # round $rx reads offset 4 * ($rx % 16).
+    my $offset = 4 * ($rx & 15);
+
+    my @ret = (
 	$sha1_round_prologue .
-	'&$_ror	($b,$j?7:2);',	# $b>>>2
+	'&$_ror	($b,'. "$rotate);",	# $b>>>2
 	'&xor	(@T[0],$d);',
 	'&mov	(@T[1],$a);',	# $b for next round
 
-	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
+        # Temporary eval-ugliness. We will fix this later.
+	'&add	($e,"' . "$offset" . '(%rsp)");', # X[]+K xfer
 	'&xor	($b,$c);',	# $c^$d for next round
 
 	'&$_rol	($a,5);',
@@ -614,14 +624,16 @@ my @body_00_19 = (
 	'&add	($e,$a);' .
 	$sha1_round_epilogue
 	);
+    return @ret;
+}
 
 sub body_00_19_enc () {
     if ($rx == 19) {
         return &body_20_39_enc();
     }
-    my @interleave = @body_00_19;
+    my @interleave = sha1_00_19($rx);
     # In rounds 00-19, we interleave 12 AES instructions.
-    my $offset = interleave_offset(scalar @body_00_19, $rx, 12);
+    my $offset = interleave_offset(scalar @interleave, $rx, 12);
 
     @interleave[$offset] .= '&$aesenc();' if defined $offset;
     $rx++;
@@ -637,29 +649,37 @@ sub body_00_19_enc () {
 # and for the precomputation for round 39.
 # Round 39 itself is deferred to body_40_59 so that it can
 # interleave with the precomputation for round 40.
-my @body_20_39 = (
-	$sha1_round_prologue .
-	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
-	'&xor	(@T[0],$d)	if($j==19);'.
-	'&xor	(@T[0],$c)	if($j> 19);',	# ($b^$d^$c)
-	'&mov	(@T[1],$a);',	# $b for next round
+sub sha_20_39 {
+    my ($rx) = @_;
+    # The outer-layer interleaving loads data and round constants onto the
+    # stack in a circular fashion. The stack region has space for 16 rounds, so
+    # round $rx reads offset 4 * ($rx % 16).
+    my $offset = 4 * ($rx & 15);
 
-	'&$_rol	($a,5);',
-	'&add	($e,@T[0]);',
-	'&xor	(@T[1],$c)	if ($j< 79);',	# $b^$d for next round
+    my @ret = ();
 
-	'&$_ror	($b,7);',	# $b>>>2
-	'&add	($e,$a);' .
-	$sha1_round_epilogue
-	);
+    push @ret,   $sha1_round_prologue
+	       . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
+    push @ret,   '&xor	(@T[0],$d)' if ($rx == 19);
+    push @ret,   '&xor	(@T[0],$c)' if ($rx > 19);	# ($b^$d^$c)
+    push @ret,   '&mov	(@T[1],$a);';	# $b for next round
+    push @ret,   '&$_rol	($a,5);';
+    push @ret,   '&add	($e,@T[0]);';
+    push @ret,   '&xor	(@T[1],$c)' if ($rx < 79);	# $b^$d for next round
+    push @ret,   '&$_ror	($b,7);';	# $b>>>2
+    push @ret,   '&add	($e,$a);'
+               . $sha1_round_epilogue;
+
+    return @ret;
+}
 
 sub body_20_39_enc () {	# b^d^c
     if ($rx == 39) {
         return &body_40_59_enc();
     }
-    my @interleave = @body_20_39;
+    my @interleave = sha_20_39($rx);
     # In rounds 20-39, we interleave 8 AES instructions.
-    my $offset = interleave_offset(scalar @body_20_39, $rx, 8);
+    my $offset = interleave_offset(scalar @interleave, $rx, 8);
 
     @interleave[$offset] .= '&$aesenc();' if defined $offset;
     $rx++;
@@ -675,30 +695,39 @@ sub body_20_39_enc () {	# b^d^c
 #
 # Unlike previous body blocks that defer the processing of the last round,
 # this block competes round 59 and precomputes (b ^ d) for round 60.
-my @body_40_59 = (
-	$sha1_round_prologue .
-	'&add	($e,eval(4*($j&15))."(%rsp)");',# X[]+K xfer
-	'&and	(@T[0],$c)	if ($j>=40);',	# (b^c)&(c^d)
-	'&xor	($c,$d)		if ($j>=40);',	# restore $c
+sub sha_40_59 {
+    my ($rx) = @_;
+    # The outer-layer interleaving loads data and round constants onto the
+    # stack in a circular fashion. The stack region has space for 16 rounds, so
+    # round $rx reads offset 4 * ($rx % 16).
+    my $offset = 4 * ($rx & 15);
 
-	'&$_ror	($b,7);',	# $b>>>2
-	'&mov	(@T[1],$a);',	# $b for next round
-	'&xor	(@T[0],$c);',
+    my @ret = ();
+    push @ret,  $sha1_round_prologue
+              . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
+    push @ret,	'&and	(@T[0],$c)'	if ($rx >= 40);	 # (b^c)&(c^d)
+    push @ret,	'&xor	($c,$d)'	if ($rx >= 40);	 # restore $c
 
-	'&$_rol	($a,5);',
-	'&add	($e,@T[0]);',
-	'&xor	(@T[1],$c)	if ($j==59);'.
-	'&xor	(@T[1],$b)	if ($j< 59);',	# b^c for next round
+    push @ret,	'&$_ror	($b,7);';	# $b>>>2
+    push @ret,  '&mov	(@T[1],$a);';	# $b for next round
+    push @ret,  '&xor	(@T[0],$c);';
 
-	'&xor	($b,$c)		if ($j< 59);',	# c^d for next round
-	'&add	($e,$a);' .
-	$sha1_round_epilogue
-	);
+    push @ret,	'&$_rol	($a,5);';
+    push @ret,	'&add	($e,@T[0]);';
+    push @ret,	'&xor	(@T[1],$c)'	if ($rx == 59);
+    push @ret,	'&xor	(@T[1],$b)'	if ($rx < 59);	# b^c for next round
+
+    push @ret,  '&xor	($b,$c)'	if ($rx < 59);	# c^d for next round
+    push @ret,  '&add	($e,$a);'
+              . $sha1_round_epilogue;
+
+    return @ret;
+}
 
 sub body_40_59_enc () {	# ((b^c)&(c^d))^c
-    my @interleave = @body_40_59;
+    my @interleave = sha_40_59($rx);
     # In rounds 40-59, we interleave 12 AES instructions.
-    my $offset = interleave_offset(scalar @body_40_59, $rx, 12);
+    my $offset = interleave_offset(scalar @interleave, $rx, 12);
 
     @interleave[$offset] .= '&$aesenc();' if defined $offset;
     $rx++;
@@ -734,7 +763,7 @@ ___
 	&Xupdate_ssse3_32_79(\&body_60_79_enc);
 	&Xuplast_ssse3_80(\&body_60_79_enc,".Ldone_ssse3");	# can jump to "done"
 
-				$saved_j=$j; @saved_V=@V;
+				@saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 				$saved_rx=$rx;
 
@@ -764,7 +793,7 @@ $code.=<<___;
 
 .Ldone_ssse3:
 ___
-				$j=$saved_j; @V=@saved_V;
+				@V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 				$rx=$saved_rx;
 
@@ -817,7 +846,7 @@ ___
 						if ($stitched_decrypt) {{{
 # reset
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
-$j=$r=$rx=0;
+$r=$rx=0;
 $Xi=4;
 
 # reassign for Atom Silvermont (see above)
@@ -863,10 +892,10 @@ sub body_00_19_dec () {	# ((c^d)&b)^d
     # on start @T[0]=(c^d)&b
     return &body_20_39_dec() if ($rx==19);
 
-    my @r=@body_00_19;
+    my @r=sha1_00_19($rx);
 
-	unshift (@r,@aes256_dec[$rx])	if (@aes256_dec[$rx]);
-	$rx++;
+    unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+    $rx++;
 
     return @r;
 }
@@ -875,10 +904,10 @@ sub body_20_39_dec () {	# b^d^c
     # on entry @T[0]=b^d
     return &body_40_59_dec() if ($rx==39);
 
-    my @r=@body_20_39;
+    my @r = sha_20_39($rx);
 
-	unshift (@r,@aes256_dec[$rx])	if (@aes256_dec[$rx]);
-	$rx++;
+    unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+    $rx++;
 
     return @r;
 }
@@ -886,10 +915,10 @@ sub body_20_39_dec () {	# b^d^c
 sub body_40_59_dec () {	# ((b^c)&(c^d))^c
     # on entry @T[0]=(b^c), (c^=d)
 
-    my @r=@body_40_59;
+    my @r = sha_40_59($rx);
 
-	unshift (@r,@aes256_dec[$rx])	if (@aes256_dec[$rx]);
-	$rx++;
+    unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+    $rx++;
 
     return @r;
 }
@@ -1015,7 +1044,7 @@ ___
 	&Xupdate_ssse3_32_79(\&body_60_79_dec);
 	&Xuplast_ssse3_80(\&body_60_79_dec,".Ldone_dec_ssse3");	# can jump to "done"
 
-				$saved_j=$j;   @saved_V=@V;
+				@saved_V=@V;
 				$saved_rx=$rx;
 
 	&Xloop_ssse3(\&body_60_79_dec);
@@ -1044,7 +1073,7 @@ $code.=<<___;
 
 .Ldone_dec_ssse3:
 ___
-				$j=$saved_j; @V=@saved_V;
+				@V=@saved_V;
 				$rx=$saved_rx;
 
 	&Xtail_ssse3(\&body_60_79_dec);
@@ -1091,7 +1120,7 @@ $code.=<<___;
 .size	aesni256_cbc_sha1_dec_ssse3,.-aesni256_cbc_sha1_dec_ssse3
 ___
 						}}}
-$j=$r=$rx=0;
+$r=$rx=0;
 
 if ($avx) {
 my ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
@@ -1454,7 +1483,7 @@ ___
 	&Xupdate_avx_32_79(\&body_20_39_enc);
 	&Xuplast_avx_80(\&body_20_39_enc,".Ldone_avx");	# can jump to "done"
 
-				$saved_j=$j; @saved_V=@V;
+				@saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 				$saved_rx=$rx;
 
@@ -1484,7 +1513,7 @@ $code.=<<___;
 
 .Ldone_avx:
 ___
-				$j=$saved_j; @V=@saved_V;
+				@V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 				$rx=$saved_rx;
 
@@ -1539,7 +1568,7 @@ ___
 # reset
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
 
-$j=$r=$rx=0;
+$r=$rx=0;
 $Xi=4;
 
 @aes256_dec = (
@@ -1668,7 +1697,7 @@ ___
 	&Xupdate_avx_32_79(\&body_20_39_dec);
 	&Xuplast_avx_80(\&body_20_39_dec,".Ldone_dec_avx");	# can jump to "done"
 
-				$saved_j=$j; @saved_V=@V;
+				@saved_V=@V;
 				$saved_rx=$rx;
 
 	&Xloop_avx(\&body_20_39_dec);
@@ -1697,7 +1726,7 @@ $code.=<<___;
 
 .Ldone_dec_avx:
 ___
-				$j=$saved_j; @V=@saved_V;
+				@V=@saved_V;
 				$rx=$saved_rx;
 
 	&Xtail_avx(\&body_20_39_dec);
