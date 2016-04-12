@@ -126,6 +126,31 @@ sub AUTOLOAD()		# thunk [simplified] 32-bit style perlasm
 my $_rol=sub { &rol(@_) };
 my $_ror=sub { &ror(@_) };
 
+my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
+my ($in0,$out,$len,$key)=map("%r$_",(12..15));
+
+my $rounds="${ivp}d";
+my $Xi=4;
+my @X=map("%xmm$_",(4..7,0..3));
+my @Tx=map("%xmm$_",(8..10));
+my @V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
+my @T=("%esi","%edi");
+my $r=0; my $sn=0; my $rx=0;
+my $K_XX_XX="%r11";
+my ($rndkey0,$iv,$in)=map("%xmm$_",(11..13));			# for enc
+my @rndkey=("%xmm14","%xmm15");					# for enc
+my ($inout0,$inout1,$inout2,$inout3)=map("%xmm$_",(12..15));	# for dec
+
+if (1) {	# reassign for Atom Silvermont
+    # The goal is to minimize amount of instructions with more than
+    # 3 prefix bytes. Or in more practical terms to keep AES-NI *and*
+    # SSSE3 instructions to upper half of the register bank.
+    @X=map("%xmm$_",(8..11,4..7));
+    @Tx=map("%xmm$_",(12,13,3));
+    ($iv,$in,$rndkey0)=map("%xmm$_",(2,14,15));
+    @rndkey=("%xmm0","%xmm1");
+}
+
 # void aesni_cbc_sha1_enc(const void *inp,
 #			void *out,
 #			size_t length,
@@ -161,34 +186,6 @@ $code.=<<___;
 	jmp	aesni_cbc_sha1_enc_ssse3
 	ret
 .size	aesni_cbc_sha1_enc,.-aesni_cbc_sha1_enc
-___
-
-my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
-my ($in0,$out,$len,$key)=map("%r$_",(12..15));
-
-my $rounds="${ivp}d";
-my $Xi=4;
-my @X=map("%xmm$_",(4..7,0..3));
-my @Tx=map("%xmm$_",(8..10));
-my @V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
-my @T=("%esi","%edi");
-my $r=0; my $sn=0; my $rx=0;
-my $K_XX_XX="%r11";
-my ($rndkey0,$iv,$in)=map("%xmm$_",(11..13));			# for enc
-my @rndkey=("%xmm14","%xmm15");					# for enc
-my ($inout0,$inout1,$inout2,$inout3)=map("%xmm$_",(12..15));	# for dec
-
-if (1) {	# reassign for Atom Silvermont
-    # The goal is to minimize amount of instructions with more than
-    # 3 prefix bytes. Or in more practical terms to keep AES-NI *and*
-    # SSSE3 instructions to upper half of the register bank.
-    @X=map("%xmm$_",(8..11,4..7));
-    @Tx=map("%xmm$_",(12,13,3));
-    ($iv,$in,$rndkey0)=map("%xmm$_",(2,14,15));
-    @rndkey=("%xmm0","%xmm1");
-}
-
-$code.=<<___;
 .type	aesni_cbc_sha1_enc_ssse3,\@function,6
 .align	32
 aesni_cbc_sha1_enc_ssse3:
