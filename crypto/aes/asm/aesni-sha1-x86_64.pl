@@ -107,7 +107,7 @@ $avx=1 if (!$avx && `$ENV{CC} -v 2>&1` =~ /((?:^clang|LLVM) version|.*based on L
 
 $shaext=1;	### set to zero if compiling for 1.0.1
 
-$stitched_decrypt=0;
+$stitched_decrypt=1;
 
 # Stitched AES+SHA-1 round direction.
 use constant {
@@ -725,11 +725,15 @@ sub sha1_round {
         $num_aes_enc = 8;
     }
 
-    if ($encrypt == ENCRYPT && $rx != 19 && $rx != 39) {
-        my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
-        @round_body[$offset] .= '&$aesenc();' if defined $offset;
+    if ($encrypt == ENCRYPT) {
+        if ($rx != 19 && $rx != 39) {
+            my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
+            @round_body[$offset] .= '&$aesenc();' if defined $offset;
+        }
     } else {
-        unshift (@round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+        # We can't inline this call yet due to the excessive use of globals and
+        # lazy evaluation.
+        add_decrypt_interleave(\@round_body, $rx);
     }
 
     # Global round counter.
@@ -841,6 +845,13 @@ $code.=<<___;
 .size	aesni_cbc_sha1_enc_ssse3,.-aesni_cbc_sha1_enc_ssse3
 ___
 
+my @aes256_dec;
+
+sub add_decrypt_interleave {
+    my ($round_body, $rx) = @_;
+    unshift ($round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+}
+
 						if ($stitched_decrypt) {{{
 # reset
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
@@ -852,7 +863,7 @@ $Xi=4;
 @X=map("%xmm$_",(8..13,6,7));
 @Tx=map("%xmm$_",(14,15,5));
 
-my @aes256_dec = (
+@aes256_dec = (
 	'&movdqu($inout0,"0x00($in0)");',
 	'&movdqu($inout1,"0x10($in0)");	&pxor	($inout0,$rndkey0);',
 	'&movdqu($inout2,"0x20($in0)");	&pxor	($inout1,$rndkey0);',
