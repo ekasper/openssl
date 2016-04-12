@@ -597,14 +597,10 @@ my $sha1_round_epilogue =
 # Round 19 itself is deferred to body_20_39 so that it can
 # interleave with the precomputation for round 20.
 sub sha1_00_19 {
-    my ($rx) = @_;
+    my ($rx, $offset) = @_;
     # In every round apart from the first, b is shifted left by 5 by the
     # previous round.
     my $rotate = $rx ? 7 : 2;
-    # The outer-layer interleaving loads data and round constants onto the
-    # stack in a circular fashion. The stack region has space for 16 rounds, so
-    # round $rx reads offset 4 * ($rx % 16).
-    my $offset = 4 * ($rx & 15);
 
     my @ret = (
 	$sha1_round_prologue .
@@ -627,20 +623,6 @@ sub sha1_00_19 {
     return @ret;
 }
 
-sub body_00_19_enc () {
-    if ($rx == 19) {
-        return &body_20_39_enc();
-    }
-    my @interleave = sha1_00_19($rx);
-    # In rounds 00-19, we interleave 12 AES instructions.
-    my $offset = interleave_offset(scalar @interleave, $rx, 12);
-
-    @interleave[$offset] .= '&$aesenc();' if defined $offset;
-    $rx++;
-
-    return @interleave;
-}
-
 # SHA-1 rounds 20-39. The nonlinear function is
 # F = b ^ c ^ d
 #
@@ -649,13 +631,8 @@ sub body_00_19_enc () {
 # and for the precomputation for round 39.
 # Round 39 itself is deferred to body_40_59 so that it can
 # interleave with the precomputation for round 40.
-sub sha_20_39 {
-    my ($rx) = @_;
-    # The outer-layer interleaving loads data and round constants onto the
-    # stack in a circular fashion. The stack region has space for 16 rounds, so
-    # round $rx reads offset 4 * ($rx % 16).
-    my $offset = 4 * ($rx & 15);
-
+sub sha1_20_39 {
+    my ($rx, $offset) = @_;
     my @ret = ();
 
     push @ret,   $sha1_round_prologue
@@ -673,20 +650,6 @@ sub sha_20_39 {
     return @ret;
 }
 
-sub body_20_39_enc () {	# b^d^c
-    if ($rx == 39) {
-        return &body_40_59_enc();
-    }
-    my @interleave = sha_20_39($rx);
-    # In rounds 20-39, we interleave 8 AES instructions.
-    my $offset = interleave_offset(scalar @interleave, $rx, 8);
-
-    @interleave[$offset] .= '&$aesenc();' if defined $offset;
-    $rx++;
-
-    return @interleave;
-}
-
 # SHA-1 rounds 40-59. The nonlinear function is
 # F = (b ^ c) & (c ^ d) ^ c
 #
@@ -695,14 +658,10 @@ sub body_20_39_enc () {	# b^d^c
 #
 # Unlike previous body blocks that defer the processing of the last round,
 # this block competes round 59 and precomputes (b ^ d) for round 60.
-sub sha_40_59 {
-    my ($rx) = @_;
-    # The outer-layer interleaving loads data and round constants onto the
-    # stack in a circular fashion. The stack region has space for 16 rounds, so
-    # round $rx reads offset 4 * ($rx % 16).
-    my $offset = 4 * ($rx & 15);
-
+sub sha1_40_59 {
+    my ($rx, $offset) = @_;
     my @ret = ();
+
     push @ret,  $sha1_round_prologue
               . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
     push @ret,	'&and	(@T[0],$c)'	if ($rx >= 40);	 # (b^c)&(c^d)
@@ -724,21 +683,71 @@ sub sha_40_59 {
     return @ret;
 }
 
-sub body_40_59_enc () {	# ((b^c)&(c^d))^c
-    my @interleave = sha_40_59($rx);
-    # In rounds 40-59, we interleave 12 AES instructions.
-    my $offset = interleave_offset(scalar @interleave, $rx, 12);
+sub sha1_round {
+    my ($rx, $interleave_enc) = @_;
 
-    @interleave[$offset] .= '&$aesenc();' if defined $offset;
-    $rx++;
+    # The outer-layer interleaving loads data and round constants onto the
+    # stack in a circular fashion. The stack region has space for 16 rounds, so
+    # round $rx reads at offset 4 * ($rx % 16).
+    my $stack_offset = 4 * ($rx & 15);
 
-    return @interleave;
+    my @round_body, $num_aes_enc;
+    if ($rx < 19) {
+        @round_body = sha1_00_19($rx, $stack_offset);
+        $num_aes_enc = 12;
+    } elsif ($rx < 39) {
+        @round_body = sha1_20_39($rx, $stack_offset);
+        $num_aes_enc = 8;
+    } elsif ($rx <= 59) {
+        @round_body = sha1_40_59($rx, $stack_offset);
+        $num_aes_enc = 12;
+    } else {
+        # In SHA-1 rounds 60-79, the nonlinear function F is the same
+        # as in rounds 20-39.
+        @round_body = sha1_20_39($rx, $stack_offset);
+        $num_aes_enc = 8;
+    }
+
+    if ($interleave_enc && $rx != 19 && $rx != 39) {
+        my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
+        @round_body[$offset] .= '&$aesenc();' if defined $offset;
+    }
+
+    return @round_body;
 }
 
-# In SHA-1 rounds 61-80, the nonlinear function F is the same
-# as in rounds 20-39.
+sub sha1_encrypt_round {
+    my ($rx) = @_;
+    return sha1_round($rx, 1);
+}
+
+sub sha1_decrypt_round {
+    my ($rx) = @_;
+    return sha1_round($rx, 0);
+}
+
+sub body_00_19_enc () {
+    my @ret = sha1_encrypt_round($rx);
+    $rx++;
+    return @ret;
+}
+
+sub body_20_39_enc () {
+    my @ret = sha1_encrypt_round($rx);
+    $rx++;
+    return @ret;
+}
+
+sub body_40_59_enc () {
+    my @ret = sha1_encrypt_round($rx);
+    $rx++;
+    return @ret;
+}
+
 sub body_60_79_enc {
-    return body_20_39_enc();
+    my @ret = sha1_encrypt_round($rx);
+    $rx++;
+    return @ret;
 }
 
 $code.=<<___;
@@ -762,6 +771,7 @@ ___
 	&Xupdate_ssse3_32_79(\&body_40_59_enc);
 	&Xupdate_ssse3_32_79(\&body_60_79_enc);
 	&Xuplast_ssse3_80(\&body_60_79_enc,".Ldone_ssse3");	# can jump to "done"
+
 
 				@saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
@@ -796,6 +806,7 @@ ___
 				@V=@saved_V;
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 				$rx=$saved_rx;
+
 
 	&Xtail_ssse3(\&body_60_79_enc);
 	&Xtail_ssse3(\&body_60_79_enc);
@@ -888,11 +899,8 @@ push(@aes256_dec,(
 	'&movups	("0x30($out,$in0)",$inout3);'
 	));
 
-sub body_00_19_dec () {	# ((c^d)&b)^d
-    # on start @T[0]=(c^d)&b
-    return &body_20_39_dec() if ($rx==19);
-
-    my @r=sha1_00_19($rx);
+sub body_00_19_dec () {
+    my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
     $rx++;
@@ -900,11 +908,8 @@ sub body_00_19_dec () {	# ((c^d)&b)^d
     return @r;
 }
 
-sub body_20_39_dec () {	# b^d^c
-    # on entry @T[0]=b^d
-    return &body_40_59_dec() if ($rx==39);
-
-    my @r = sha_20_39($rx);
+sub body_20_39_dec () {
+    my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
     $rx++;
@@ -912,10 +917,8 @@ sub body_20_39_dec () {	# b^d^c
     return @r;
 }
 
-sub body_40_59_dec () {	# ((b^c)&(c^d))^c
-    # on entry @T[0]=(b^c), (c^=d)
-
-    my @r = sha_40_59($rx);
+sub body_40_59_dec () {
+    my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
     $rx++;
