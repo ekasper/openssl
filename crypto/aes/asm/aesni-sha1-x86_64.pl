@@ -683,8 +683,14 @@ sub sha1_40_59 {
     return @ret;
 }
 
+# SHA-1 round uses the global $rx counter to emit instructions for the next
+# round. This means that calling code can simply do.
+#
+# my @instructions = (sha1_round(), sha1_round(), sha1_round(), sha1_round());
+#
+# to get the next four rounds.
 sub sha1_round {
-    my ($rx, $interleave_enc) = @_;
+    my ($interleave_enc) = @_;
 
     # The outer-layer interleaving loads data and round constants onto the
     # stack in a circular fashion. The stack region has space for 16 rounds, so
@@ -713,41 +719,33 @@ sub sha1_round {
         @round_body[$offset] .= '&$aesenc();' if defined $offset;
     }
 
+    # Global round counter.
+    $rx++;
     return @round_body;
 }
 
 sub sha1_encrypt_round {
-    my ($rx) = @_;
-    return sha1_round($rx, 1);
+    return sha1_round(1);
 }
 
 sub sha1_decrypt_round {
-    my ($rx) = @_;
-    return sha1_round($rx, 0);
+    return sha1_round(0);
 }
 
 sub body_00_19_enc () {
-    my @ret = sha1_encrypt_round($rx);
-    $rx++;
-    return @ret;
+    return sha1_encrypt_round();
 }
 
 sub body_20_39_enc () {
-    my @ret = sha1_encrypt_round($rx);
-    $rx++;
-    return @ret;
+    return sha1_encrypt_round();
 }
 
 sub body_40_59_enc () {
-    my @ret = sha1_encrypt_round($rx);
-    $rx++;
-    return @ret;
+    return sha1_encrypt_round();
 }
 
 sub body_60_79_enc {
-    my @ret = sha1_encrypt_round($rx);
-    $rx++;
-    return @ret;
+    return sha1_encrypt_round();
 }
 
 $code.=<<___;
@@ -903,7 +901,6 @@ sub body_00_19_dec () {
     my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
-    $rx++;
 
     return @r;
 }
@@ -912,7 +909,6 @@ sub body_20_39_dec () {
     my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
-    $rx++;
 
     return @r;
 }
@@ -921,7 +917,6 @@ sub body_40_59_dec () {
     my @r=sha1_decrypt_round($rx);
 
     unshift (@r, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
-    $rx++;
 
     return @r;
 }
