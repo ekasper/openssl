@@ -195,6 +195,201 @@ ___
     $r++;	unshift(@rndkey,pop(@rndkey));
 };
 
+# We distribute AES encryptions evenly in every block of 20 SHA-1 rounds.
+#
+# A generic way to compute the interleave that automatically adjusts
+# the offsets, should the number of instructions in a SHA-1 round change.
+#
+# Assumes that $n <= $num_aes_enc, i.e., that there is at most one
+# AES encryption per SHA-1 round.
+sub interleave_offset {
+    # $n is the number of instructions per SHA-1 round.
+    # The number of instructions may be different in the 20th round
+    # of each block, but this was ignored in the original code, so
+    # we keep it so.
+    my ($n, $rx, $num_aes_enc) = @_;
+
+    use integer;
+    # Offsets are roughly evenly distributed according to the following rule,
+    # unchanged from the original code.
+    # Rounds 0..$rx contain a total ($rx + 1) * $num_aes_enc / 20 encryptions,
+    # and the interval is 20 * $n / $num_aes_enc.
+    my $offset = (($rx + 1) * $num_aes_enc / 20) * 20 * $n / $num_aes_enc;
+
+    # If the indices don't match, then we jump over this block;
+    # encryptions are sparse and not every round gets an interleave.
+    if ($rx == $offset / $n) {
+        return $offset % $n;
+    }
+
+    return undef;
+}
+
+# First, prepare the SHA-1 blocks for interleaving.
+#
+# Recall a SHA-1 round, starting from state V = (a, b, c, d, e).
+# <<< is rotation, W is the input word, and K a round constant.
+# F is a nonlinear function that differs between rounds.
+#
+# b = b >>> 5
+# e += F(b, c, d) + (a <<< 5) + W_t + K_t
+# V = (e, a, b, c, d)
+#
+# Each round also precomputes F partially for the next round.
+my $sha1_round_prologue =
+	'($a,$b,$c,$d,$e)=@V;';
+
+my $sha1_round_epilogue =
+	# V = (e, a, b, c, d)
+	'unshift(@V,pop(@V));' .
+	# Precomputation is read from T[0] in the current round,
+	# and written into T[1] for the next round.
+	# Swap T[0] and T[1] to hand over the precomputation to the
+	# next round.
+	'unshift(@T,pop(@T));';
+
+# SHA-1 rounds 00-19. The nonlinear function is
+# F = (b & (c ^ d)) ^ d
+#
+# Each round precomputes b & (c ^ d) for the next round.
+# Therefore, this block is in fact used for full rounds 00-18,
+# and for the precomputation for round 19.
+# Round 19 itself is deferred to body_20_39 so that it can
+# interleave with the precomputation for round 20.
+sub sha1_00_19 {
+    my ($rx, $offset) = @_;
+    # In every round apart from the first, b is shifted left by 5 by the
+    # previous round.
+    my $rotate = $rx ? 7 : 2;
+
+    my @ret = (
+	$sha1_round_prologue .
+	'&$_ror	($b,'. "$rotate);",	# $b>>>2
+	'&xor	(@T[0],$d);',
+	'&mov	(@T[1],$a);',	# $b for next round
+
+        # Temporary eval-ugliness. We will fix this later.
+	'&add	($e,"' . "$offset" . '(%rsp)");', # X[]+K xfer
+	'&xor	($b,$c);',	# $c^$d for next round
+
+	'&$_rol	($a,5);',
+	'&add	($e,@T[0]);',
+	'&and	(@T[1],$b);',	# ($b&($c^$d)) for next round
+
+	'&xor	($b,$c);',	# restore $b
+	'&add	($e,$a);' .
+	$sha1_round_epilogue
+	);
+    return @ret;
+}
+
+# SHA-1 rounds 20-39. The nonlinear function is
+# F = b ^ c ^ d
+#
+# Each round precomputes b ^ d for the next round.
+# Therefore, this block is in fact used for full rounds 20-38,
+# and for the precomputation for round 39.
+# Round 39 itself is deferred to body_40_59 so that it can
+# interleave with the precomputation for round 40.
+sub sha1_20_39 {
+    my ($rx, $offset) = @_;
+    my @ret = ();
+
+    push @ret,   $sha1_round_prologue
+	       . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
+    push @ret,   '&xor	(@T[0],$d)' if ($rx == 19);
+    push @ret,   '&xor	(@T[0],$c)' if ($rx > 19);	# ($b^$d^$c)
+    push @ret,   '&mov	(@T[1],$a);';	# $b for next round
+    push @ret,   '&$_rol	($a,5);';
+    push @ret,   '&add	($e,@T[0]);';
+    push @ret,   '&xor	(@T[1],$c)' if ($rx < 79);	# $b^$d for next round
+    push @ret,   '&$_ror	($b,7);';	# $b>>>2
+    push @ret,   '&add	($e,$a);'
+               . $sha1_round_epilogue;
+
+    return @ret;
+}
+
+# SHA-1 rounds 40-59. The nonlinear function is
+# F = (b ^ c) & (c ^ d) ^ c
+#
+# Rounds 40-58 precompute (b ^ c) for the next round,
+# and set c = c ^ d.
+#
+# Unlike previous body blocks that defer the processing of the last round,
+# this block competes round 59 and precomputes (b ^ d) for round 60.
+sub sha1_40_59 {
+    my ($rx, $offset) = @_;
+    my @ret = ();
+
+    push @ret,  $sha1_round_prologue
+              . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
+    push @ret,	'&and	(@T[0],$c)'	if ($rx >= 40);	 # (b^c)&(c^d)
+    push @ret,	'&xor	($c,$d)'	if ($rx >= 40);	 # restore $c
+
+    push @ret,	'&$_ror	($b,7);';	# $b>>>2
+    push @ret,  '&mov	(@T[1],$a);';	# $b for next round
+    push @ret,  '&xor	(@T[0],$c);';
+
+    push @ret,	'&$_rol	($a,5);';
+    push @ret,	'&add	($e,@T[0]);';
+    push @ret,	'&xor	(@T[1],$c)'	if ($rx == 59);
+    push @ret,	'&xor	(@T[1],$b)'	if ($rx < 59);	# b^c for next round
+
+    push @ret,  '&xor	($b,$c)'	if ($rx < 59);	# c^d for next round
+    push @ret,  '&add	($e,$a);'
+              . $sha1_round_epilogue;
+
+    return @ret;
+}
+
+# SHA-1 round uses the global $rx counter to emit instructions for the next
+# round. This means that calling code can simply do
+#
+# my @instructions = (sha1_round(ENCRYPT));
+#
+# to get the next encryption round.
+sub sha1_round {
+    my ($encrypt) = @_;
+
+    # The outer-layer interleaving loads data and round constants onto the
+    # stack in a circular fashion. The stack region has space for 16 rounds, so
+    # round $rx reads at offset 4 * ($rx % 16).
+    my $stack_offset = 4 * ($rx & 15);
+
+    my @round_body, $num_aes_enc;
+    if ($rx < 19) {
+        @round_body = sha1_00_19($rx, $stack_offset);
+        $num_aes_enc = 12;
+    } elsif ($rx < 39) {
+        @round_body = sha1_20_39($rx, $stack_offset);
+        $num_aes_enc = 8;
+    } elsif ($rx <= 59) {
+        @round_body = sha1_40_59($rx, $stack_offset);
+        $num_aes_enc = 12;
+    } else {
+        # In SHA-1 rounds 60-79, the nonlinear function F is the same
+        # as in rounds 20-39.
+        @round_body = sha1_20_39($rx, $stack_offset);
+        $num_aes_enc = 8;
+    }
+
+    if ($encrypt == ENCRYPT) {
+        if ($rx != 19 && $rx != 39) {
+            my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
+            @round_body[$offset] .= '&$aesenc();' if defined $offset;
+        }
+    } else {
+        # We must defer this to further down for now, due to global
+        # variables that affect the operation.
+        add_decrypt_interleave(\@round_body, $rx);
+    }
+
+    # Global round counter.
+    $rx++;
+    return @round_body;
+}
+
 # void aesni_cbc_sha1_enc(const void *inp,
 #			void *out,
 #			size_t length,
@@ -540,201 +735,6 @@ sub Xtail_ssse3()
   my ($a,$b,$c,$d,$e);
 
 	foreach (@insns) { eval; }
-}
-
-# We distribute AES encryptions evenly in every block of 20 SHA-1 rounds.
-#
-# A generic way to compute the interleave that automatically adjusts
-# the offsets, should the number of instructions in a SHA-1 round change.
-#
-# Assumes that $n <= $num_aes_enc, i.e., that there is at most one
-# AES encryption per SHA-1 round.
-sub interleave_offset {
-    # $n is the number of instructions per SHA-1 round.
-    # The number of instructions may be different in the 20th round
-    # of each block, but this was ignored in the original code, so
-    # we keep it so.
-    my ($n, $rx, $num_aes_enc) = @_;
-
-    use integer;
-    # Offsets are roughly evenly distributed according to the following rule,
-    # unchanged from the original code.
-    # Rounds 0..$rx contain a total ($rx + 1) * $num_aes_enc / 20 encryptions,
-    # and the interval is 20 * $n / $num_aes_enc.
-    my $offset = (($rx + 1) * $num_aes_enc / 20) * 20 * $n / $num_aes_enc;
-
-    # If the indices don't match, then we jump over this block;
-    # encryptions are sparse and not every round gets an interleave.
-    if ($rx == $offset / $n) {
-        return $offset % $n;
-    }
-
-    return undef;
-}
-
-# First, prepare the SHA-1 blocks for interleaving.
-#
-# Recall a SHA-1 round, starting from state V = (a, b, c, d, e).
-# <<< is rotation, W is the input word, and K a round constant.
-# F is a nonlinear function that differs between rounds.
-#
-# b = b >>> 5
-# e += F(b, c, d) + (a <<< 5) + W_t + K_t
-# V = (e, a, b, c, d)
-#
-# Each round also precomputes F partially for the next round.
-my $sha1_round_prologue =
-	'($a,$b,$c,$d,$e)=@V;';
-
-my $sha1_round_epilogue =
-	# V = (e, a, b, c, d)
-	'unshift(@V,pop(@V));' .
-	# Precomputation is read from T[0] in the current round,
-	# and written into T[1] for the next round.
-	# Swap T[0] and T[1] to hand over the precomputation to the
-	# next round.
-	'unshift(@T,pop(@T));';
-
-# SHA-1 rounds 00-19. The nonlinear function is
-# F = (b & (c ^ d)) ^ d
-#
-# Each round precomputes b & (c ^ d) for the next round.
-# Therefore, this block is in fact used for full rounds 00-18,
-# and for the precomputation for round 19.
-# Round 19 itself is deferred to body_20_39 so that it can
-# interleave with the precomputation for round 20.
-sub sha1_00_19 {
-    my ($rx, $offset) = @_;
-    # In every round apart from the first, b is shifted left by 5 by the
-    # previous round.
-    my $rotate = $rx ? 7 : 2;
-
-    my @ret = (
-	$sha1_round_prologue .
-	'&$_ror	($b,'. "$rotate);",	# $b>>>2
-	'&xor	(@T[0],$d);',
-	'&mov	(@T[1],$a);',	# $b for next round
-
-        # Temporary eval-ugliness. We will fix this later.
-	'&add	($e,"' . "$offset" . '(%rsp)");', # X[]+K xfer
-	'&xor	($b,$c);',	# $c^$d for next round
-
-	'&$_rol	($a,5);',
-	'&add	($e,@T[0]);',
-	'&and	(@T[1],$b);',	# ($b&($c^$d)) for next round
-
-	'&xor	($b,$c);',	# restore $b
-	'&add	($e,$a);' .
-	$sha1_round_epilogue
-	);
-    return @ret;
-}
-
-# SHA-1 rounds 20-39. The nonlinear function is
-# F = b ^ c ^ d
-#
-# Each round precomputes b ^ d for the next round.
-# Therefore, this block is in fact used for full rounds 20-38,
-# and for the precomputation for round 39.
-# Round 39 itself is deferred to body_40_59 so that it can
-# interleave with the precomputation for round 40.
-sub sha1_20_39 {
-    my ($rx, $offset) = @_;
-    my @ret = ();
-
-    push @ret,   $sha1_round_prologue
-	       . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
-    push @ret,   '&xor	(@T[0],$d)' if ($rx == 19);
-    push @ret,   '&xor	(@T[0],$c)' if ($rx > 19);	# ($b^$d^$c)
-    push @ret,   '&mov	(@T[1],$a);';	# $b for next round
-    push @ret,   '&$_rol	($a,5);';
-    push @ret,   '&add	($e,@T[0]);';
-    push @ret,   '&xor	(@T[1],$c)' if ($rx < 79);	# $b^$d for next round
-    push @ret,   '&$_ror	($b,7);';	# $b>>>2
-    push @ret,   '&add	($e,$a);'
-               . $sha1_round_epilogue;
-
-    return @ret;
-}
-
-# SHA-1 rounds 40-59. The nonlinear function is
-# F = (b ^ c) & (c ^ d) ^ c
-#
-# Rounds 40-58 precompute (b ^ c) for the next round,
-# and set c = c ^ d.
-#
-# Unlike previous body blocks that defer the processing of the last round,
-# this block competes round 59 and precomputes (b ^ d) for round 60.
-sub sha1_40_59 {
-    my ($rx, $offset) = @_;
-    my @ret = ();
-
-    push @ret,  $sha1_round_prologue
-              . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
-    push @ret,	'&and	(@T[0],$c)'	if ($rx >= 40);	 # (b^c)&(c^d)
-    push @ret,	'&xor	($c,$d)'	if ($rx >= 40);	 # restore $c
-
-    push @ret,	'&$_ror	($b,7);';	# $b>>>2
-    push @ret,  '&mov	(@T[1],$a);';	# $b for next round
-    push @ret,  '&xor	(@T[0],$c);';
-
-    push @ret,	'&$_rol	($a,5);';
-    push @ret,	'&add	($e,@T[0]);';
-    push @ret,	'&xor	(@T[1],$c)'	if ($rx == 59);
-    push @ret,	'&xor	(@T[1],$b)'	if ($rx < 59);	# b^c for next round
-
-    push @ret,  '&xor	($b,$c)'	if ($rx < 59);	# c^d for next round
-    push @ret,  '&add	($e,$a);'
-              . $sha1_round_epilogue;
-
-    return @ret;
-}
-
-# SHA-1 round uses the global $rx counter to emit instructions for the next
-# round. This means that calling code can simply do
-#
-# my @instructions = (sha1_round(ENCRYPT));
-#
-# to get the next encryption round.
-sub sha1_round {
-    my ($encrypt) = @_;
-
-    # The outer-layer interleaving loads data and round constants onto the
-    # stack in a circular fashion. The stack region has space for 16 rounds, so
-    # round $rx reads at offset 4 * ($rx % 16).
-    my $stack_offset = 4 * ($rx & 15);
-
-    my @round_body, $num_aes_enc;
-    if ($rx < 19) {
-        @round_body = sha1_00_19($rx, $stack_offset);
-        $num_aes_enc = 12;
-    } elsif ($rx < 39) {
-        @round_body = sha1_20_39($rx, $stack_offset);
-        $num_aes_enc = 8;
-    } elsif ($rx <= 59) {
-        @round_body = sha1_40_59($rx, $stack_offset);
-        $num_aes_enc = 12;
-    } else {
-        # In SHA-1 rounds 60-79, the nonlinear function F is the same
-        # as in rounds 20-39.
-        @round_body = sha1_20_39($rx, $stack_offset);
-        $num_aes_enc = 8;
-    }
-
-    if ($encrypt == ENCRYPT) {
-        if ($rx != 19 && $rx != 39) {
-            my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
-            @round_body[$offset] .= '&$aesenc();' if defined $offset;
-        }
-    } else {
-        # We can't inline this call yet due to the excessive use of globals and
-        # lazy evaluation.
-        add_decrypt_interleave(\@round_body, $rx);
-    }
-
-    # Global round counter.
-    $rx++;
-    return @round_body;
 }
 
 $code.=<<___;
