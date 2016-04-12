@@ -163,7 +163,8 @@ $code.=<<___;
 .size	aesni_cbc_sha1_enc,.-aesni_cbc_sha1_enc
 ___
 
-my ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
+my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
+my ($in0,$out,$len,$key)=map("%r$_",(12..15));
 
 my $Xi=4;
 my @X=map("%xmm$_",(4..7,0..3));
@@ -217,14 +218,13 @@ $code.=<<___ if ($win64);
 .Lprologue_ssse3:
 ___
 $code.=<<___;
-	mov	$in0,%r12			# reassign arguments
-	mov	$out,%r13
-	mov	$len,%r14
-	lea	112($key),%r15			# size optimization
+	mov	%rdi,$in0			# reassign arguments
+	mov	%rsi,$out
+	mov	%rdx,$len
+	lea	112(%rcx),$key			# size optimization
 	movdqu	($ivp),$iv			# load IV
 	mov	$ivp,88(%rsp)			# save $ivp
 ___
-($in0,$out,$len,$key)=map("%r$_",(12..15));	# reassign arguments
 my $rounds="${ivp}d";
 $code.=<<___;
 	shl	\$6,$len
@@ -271,6 +271,7 @@ ___
 my $aesenc=sub {
   use integer;
   my ($n,$k)=($r/10,$r%10);
+
     if ($k==0) {
       $code.=<<___;
 	movups		`16*$n`($in0),$in		# load input
@@ -1746,7 +1747,8 @@ $code.=<<___;
 .size	aesni256_cbc_sha1_dec_avx,.-aesni256_cbc_sha1_dec_avx
 ___
 						}}}
-}
+}  # avx
+
 $code.=<<___;
 .align	64
 K_XX_XX:
