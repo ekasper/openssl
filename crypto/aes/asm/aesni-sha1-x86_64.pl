@@ -105,8 +105,6 @@ $avx=1 if (!$avx && $win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
 	   $1>=10);
 $avx=1 if (!$avx && `$ENV{CC} -v 2>&1` =~ /((?:^clang|LLVM) version|.*based on LLVM) ([3-9]\.[0-9]+)/ && $2>=3.0);
 
-$shaext=1;	### set to zero if compiling for 1.0.1
-
 $stitched_decrypt=1;
 
 # Stitched AES+SHA-1 round direction.
@@ -138,7 +136,7 @@ aesni_cbc_sha1_enc:
 	mov	OPENSSL_ia32cap_P+0(%rip),%r10d
 	mov	OPENSSL_ia32cap_P+4(%rip),%r11
 ___
-$code.=<<___ if ($shaext);
+$code.=<<___;
 	bt	\$61,%r11		# check SHA bit
 	jc	aesni_cbc_sha1_enc_shaext
 ___
@@ -1762,7 +1760,7 @@ K_XX_XX:
 .asciz	"AESNI-CBC+SHA1 stitch for x86_64, CRYPTOGAMS by <appro\@openssl.org>"
 .align	64
 ___
-						if ($shaext) {{{
+
 ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
 
 $rounds="%r11d";
@@ -1930,7 +1928,7 @@ $code.=<<___;
 	ret
 .size	aesni_cbc_sha1_enc_shaext,.-aesni_cbc_sha1_enc_shaext
 ___
-						}}}
+
 # EXCEPTION_DISPOSITION handler (EXCEPTION_RECORD *rec,ULONG64 frame,
 #		CONTEXT *context,DISPATCHER_CONTEXT *disp)
 if ($win64) {
@@ -1973,7 +1971,7 @@ ssse3_handler:
 	cmp	%r10,%rbx		# context->Rip>=epilogue label
 	jae	.Lcommon_seh_tail
 ___
-$code.=<<___ if ($shaext);
+$code.=<<___;
 	lea	aesni_cbc_sha1_enc_shaext(%rip),%r10
 	cmp	%r10,%rbx
 	jb	.Lseh_no_shaext
@@ -2058,7 +2056,7 @@ $code.=<<___ if ($avx);
 	.rva	.LSEH_end_aesni_cbc_sha1_enc_avx
 	.rva	.LSEH_info_aesni_cbc_sha1_enc_avx
 ___
-$code.=<<___ if ($shaext);
+$code.=<<___;
 	.rva	.LSEH_begin_aesni_cbc_sha1_enc_shaext
 	.rva	.LSEH_end_aesni_cbc_sha1_enc_shaext
 	.rva	.LSEH_info_aesni_cbc_sha1_enc_shaext
@@ -2077,7 +2075,7 @@ $code.=<<___ if ($avx);
 	.rva	ssse3_handler
 	.rva	.Lprologue_avx,.Lepilogue_avx		# HandlerData[]
 ___
-$code.=<<___ if ($shaext);
+$code.=<<___;
 .LSEH_info_aesni_cbc_sha1_enc_shaext:
 	.byte	9,0,0,0
 	.rva	ssse3_handler
