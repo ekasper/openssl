@@ -166,6 +166,7 @@ ___
 my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
 my ($in0,$out,$len,$key)=map("%r$_",(12..15));
 
+my $rounds="${ivp}d";
 my $Xi=4;
 my @X=map("%xmm$_",(4..7,0..3));
 my @Tx=map("%xmm$_",(8..10));
@@ -225,7 +226,6 @@ $code.=<<___;
 	movdqu	($ivp),$iv			# load IV
 	mov	$ivp,88(%rsp)			# save $ivp
 ___
-my $rounds="${ivp}d";
 $code.=<<___;
 	shl	\$6,$len
 	sub	$in0,$out
