@@ -850,7 +850,6 @@ sub add_decrypt_interleave {
 
 						if ($stitched_decrypt) {{{
 # reset
-($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
 $r=$rx=0;
 $Xi=4;
 
@@ -940,14 +939,13 @@ $code.=<<___ if ($win64);
 .Lprologue_dec_ssse3:
 ___
 $code.=<<___;
-	mov	$in0,%r12			# reassign arguments
-	mov	$out,%r13
-	mov	$len,%r14
-	lea	112($key),%r15			# size optimization
+	mov	%rdi,$in0			# reassign arguments
+	mov	%rsi,$out
+	mov	%rdx,$len
+	lea	112(%rcx),$key			# size optimization
 	movdqu	($ivp),@X[3]			# load IV
 	#mov	$ivp,88(%rsp)			# save $ivp
 ___
-($in0,$out,$len,$key)=map("%r$_",(12..15));	# reassign arguments
 $code.=<<___;
 	shl	\$6,$len
 	sub	$in0,$out
@@ -1087,8 +1085,6 @@ ___
 $r=$rx=0;
 
 if ($avx) {
-my ($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
-
 my $Xi=4;
 my @X=map("%xmm$_",(4..7,0..3));
 my @Tx=map("%xmm$_",(8..10));
@@ -1134,14 +1130,13 @@ $code.=<<___ if ($win64);
 ___
 $code.=<<___;
 	vzeroall
-	mov	$in0,%r12			# reassign arguments
-	mov	$out,%r13
-	mov	$len,%r14
-	lea	112($key),%r15			# size optimization
+	mov	%rdi,$in0			# reassign arguments
+	mov	%rsi,$out
+	mov	%rdx,$len
+	lea	112(%rcx),$key			# size optimization
 	vmovdqu	($ivp),$iv			# load IV
 	mov	$ivp,88(%rsp)			# save $ivp
 ___
-($in0,$out,$len,$key)=map("%r$_",(12..15));	# reassign arguments
 my $rounds="${ivp}d";
 $code.=<<___;
 	shl	\$6,$len
@@ -1535,8 +1530,6 @@ ___
 
 						if ($stitched_decrypt) {{{
 # reset
-($in0,$out,$len,$key,$ivp,$ctx,$inp)=("%rdi","%rsi","%rdx","%rcx","%r8","%r9","%r10");
-
 $r=$rx=0;
 $Xi=4;
 
@@ -1602,10 +1595,10 @@ $code.=<<___ if ($win64);
 ___
 $code.=<<___;
 	vzeroall
-	mov	$in0,%r12			# reassign arguments
-	mov	$out,%r13
-	mov	$len,%r14
-	lea	112($key),%r15			# size optimization
+	mov	%rdi,$in0			# reassign arguments
+	mov	%rsi,$out
+	mov	%rdx,$len
+	lea	112(%rcx),$key 			# size optimization
 	vmovdqu	($ivp),@X[3]			# load IV
 ___
 ($in0,$out,$len,$key)=map("%r$_",(12..15));	# reassign arguments
