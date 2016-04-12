@@ -116,6 +116,16 @@ use constant {
 open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\"";
 *STDOUT=*OUT;
 
+sub AUTOLOAD()		# thunk [simplified] 32-bit style perlasm
+{ my $opcode = $AUTOLOAD; $opcode =~ s/.*:://;
+  my $arg = pop;
+    $arg = "\$$arg" if ($arg*1 eq $arg);
+    $code .= "\t$opcode\t".join(',',$arg,reverse @_)."\n";
+}
+
+my $_rol=sub { &rol(@_) };
+my $_ror=sub { &ror(@_) };
+
 # void aesni_cbc_sha1_enc(const void *inp,
 #			void *out,
 #			size_t length,
@@ -175,16 +185,6 @@ if (1) {	# reassign for Atom Silvermont
     ($iv,$in,$rndkey0)=map("%xmm$_",(2,14,15));
     @rndkey=("%xmm0","%xmm1");
 }
-
-sub AUTOLOAD()		# thunk [simplified] 32-bit style perlasm
-{ my $opcode = $AUTOLOAD; $opcode =~ s/.*:://;
-  my $arg = pop;
-    $arg = "\$$arg" if ($arg*1 eq $arg);
-    $code .= "\t$opcode\t".join(',',$arg,reverse @_)."\n";
-}
-
-my $_rol=sub { &rol(@_) };
-my $_ror=sub { &ror(@_) };
 
 $code.=<<___;
 .type	aesni_cbc_sha1_enc_ssse3,\@function,6
