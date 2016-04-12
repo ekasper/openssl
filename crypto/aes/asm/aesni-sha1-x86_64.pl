@@ -151,6 +151,50 @@ if (1) {	# reassign for Atom Silvermont
     @rndkey=("%xmm0","%xmm1");
 }
 
+my $aesenc=sub {
+  use integer;
+  my ($n,$k)=($r/10,$r%10);
+
+    if ($k==0) {
+      $code.=<<___;
+	movups		`16*$n`($in0),$in		# load input
+	xorps		$rndkey0,$in
+___
+      $code.=<<___ if ($n);
+	movups		$iv,`16*($n-1)`($out,$in0)	# write output
+___
+      $code.=<<___;
+	xorps		$in,$iv
+	movups		`32+16*$k-112`($key),$rndkey[1]
+	aesenc		$rndkey[0],$iv
+___
+    } elsif ($k==9) {
+      $sn++;
+      $code.=<<___;
+	cmp		\$11,$rounds
+	jb		.Laesenclast$sn
+	movups		`32+16*($k+0)-112`($key),$rndkey[1]
+	aesenc		$rndkey[0],$iv
+	movups		`32+16*($k+1)-112`($key),$rndkey[0]
+	aesenc		$rndkey[1],$iv
+	je		.Laesenclast$sn
+	movups		`32+16*($k+2)-112`($key),$rndkey[1]
+	aesenc		$rndkey[0],$iv
+	movups		`32+16*($k+3)-112`($key),$rndkey[0]
+	aesenc		$rndkey[1],$iv
+.Laesenclast$sn:
+	aesenclast	$rndkey[0],$iv
+	movups		16-112($key),$rndkey[1]		# forward reference
+___
+    } else {
+      $code.=<<___;
+	movups		`32+16*$k-112`($key),$rndkey[1]
+	aesenc		$rndkey[0],$iv
+___
+    }
+    $r++;	unshift(@rndkey,pop(@rndkey));
+};
+
 # void aesni_cbc_sha1_enc(const void *inp,
 #			void *out,
 #			size_t length,
@@ -264,50 +308,6 @@ $code.=<<___;
 	movups	16-112($key),$rndkey[0]	# forward reference
 	jmp	.Loop_ssse3
 ___
-
-my $aesenc=sub {
-  use integer;
-  my ($n,$k)=($r/10,$r%10);
-
-    if ($k==0) {
-      $code.=<<___;
-	movups		`16*$n`($in0),$in		# load input
-	xorps		$rndkey0,$in
-___
-      $code.=<<___ if ($n);
-	movups		$iv,`16*($n-1)`($out,$in0)	# write output
-___
-      $code.=<<___;
-	xorps		$in,$iv
-	movups		`32+16*$k-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-___
-    } elsif ($k==9) {
-      $sn++;
-      $code.=<<___;
-	cmp		\$11,$rounds
-	jb		.Laesenclast$sn
-	movups		`32+16*($k+0)-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-	movups		`32+16*($k+1)-112`($key),$rndkey[0]
-	aesenc		$rndkey[1],$iv
-	je		.Laesenclast$sn
-	movups		`32+16*($k+2)-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-	movups		`32+16*($k+3)-112`($key),$rndkey[0]
-	aesenc		$rndkey[1],$iv
-.Laesenclast$sn:
-	aesenclast	$rndkey[0],$iv
-	movups		16-112($key),$rndkey[1]		# forward reference
-___
-    } else {
-      $code.=<<___;
-	movups		`32+16*$k-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-___
-    }
-    $r++;	unshift(@rndkey,pop(@rndkey));
-};
 
 sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
 { use integer;
