@@ -343,6 +343,8 @@ sub sha1_40_59 {
     return @ret;
 }
 
+my @aes256_dec;
+
 # SHA-1 round uses the global $rx counter to emit instructions for the next
 # round. This means that calling code can simply do
 #
@@ -380,9 +382,7 @@ sub sha1_round {
             @round_body[$offset] .= '&$aesenc();' if defined $offset;
         }
     } else {
-        # We must defer this to further down for now, due to global
-        # variables that affect the operation.
-        add_decrypt_interleave(\@round_body, $rx);
+        unshift (@round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
     }
 
     # Global round counter.
@@ -840,13 +840,6 @@ $code.=<<___;
 	ret
 .size	aesni_cbc_sha1_enc_ssse3,.-aesni_cbc_sha1_enc_ssse3
 ___
-
-my @aes256_dec;
-
-sub add_decrypt_interleave {
-    my ($round_body, $rx) = @_;
-    unshift ($round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
-}
 
 						if ($stitched_decrypt) {{{
 # reset
