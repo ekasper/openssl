@@ -345,49 +345,54 @@ sub sha1_40_59 {
 
 my @aes256_dec;
 
-# SHA-1 round uses the global $rx counter to emit instructions for the next
-# round. This means that calling code can simply do
+# SHA-1 interleave uses the global $rx counter to emit instructions for the
+# next round. This means that calling code can simply do
 #
-# my @instructions = (sha1_round(ENCRYPT));
+# my @instructions = (sha1_interleave(ENCRYPT, 4));
 #
-# to get the next encryption round.
-sub sha1_round {
-    my ($encrypt) = @_;
+# to get the next four rounds of SHA-1, interleaved with AES.
+sub sha1_interleave {
+    my ($encrypt, $num_rounds) = @_;
 
-    # The outer-layer interleaving loads data and round constants onto the
-    # stack in a circular fashion. The stack region has space for 16 rounds, so
-    # round $rx reads at offset 4 * ($rx % 16).
-    my $stack_offset = 4 * ($rx & 15);
+    my @instructions;
 
-    my @round_body, $num_aes_enc;
-    if ($rx < 19) {
-        @round_body = sha1_00_19($rx, $stack_offset);
-        $num_aes_enc = 12;
-    } elsif ($rx < 39) {
-        @round_body = sha1_20_39($rx, $stack_offset);
-        $num_aes_enc = 8;
-    } elsif ($rx <= 59) {
-        @round_body = sha1_40_59($rx, $stack_offset);
-        $num_aes_enc = 12;
-    } else {
-        # In SHA-1 rounds 60-79, the nonlinear function F is the same
-        # as in rounds 20-39.
-        @round_body = sha1_20_39($rx, $stack_offset);
-        $num_aes_enc = 8;
-    }
+    foreach (1..$num_rounds) {
+        # The outer-layer interleaving loads data and round constants onto the
+        # stack in a circular fashion. The stack region has space for 16 rounds, so
+        # round $rx reads at offset 4 * ($rx % 16).
+        my $stack_offset = 4 * ($rx & 15);
 
-    if ($encrypt == ENCRYPT) {
-        if ($rx != 19 && $rx != 39) {
-            my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
-            @round_body[$offset] .= '&$aesenc();' if defined $offset;
+        my @round_body, $num_aes_enc;
+        if ($rx < 19) {
+            @round_body = sha1_00_19($rx, $stack_offset);
+            $num_aes_enc = 12;
+        } elsif ($rx < 39) {
+            @round_body = sha1_20_39($rx, $stack_offset);
+            $num_aes_enc = 8;
+        } elsif ($rx <= 59) {
+            @round_body = sha1_40_59($rx, $stack_offset);
+            $num_aes_enc = 12;
+        } else {
+            # In SHA-1 rounds 60-79, the nonlinear function F is the same
+            # as in rounds 20-39.
+            @round_body = sha1_20_39($rx, $stack_offset);
+            $num_aes_enc = 8;
         }
-    } else {
-        unshift (@round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
-    }
 
-    # Global round counter.
-    $rx++;
-    return @round_body;
+        if ($encrypt == ENCRYPT) {
+            if ($rx != 19 && $rx != 39) {
+                my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
+                @round_body[$offset] .= '&$aesenc();' if defined $offset;
+            }
+        } else {
+            unshift (@round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
+        }
+
+        # Global round counter.
+        $rx++;
+        push @instructions, @round_body;
+    }
+    return @instructions;
 }
 
 # void aesni_cbc_sha1_enc(const void *inp,
@@ -507,8 +512,7 @@ ___
 sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 40 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));		# ror
@@ -590,8 +594,7 @@ sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
 sub Xupdate_ssse3_32_79()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 to 44 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 to 44 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns))		if ($Xi==8);
@@ -663,8 +666,7 @@ sub Xupdate_ssse3_32_79()
 sub Xuplast_ssse3_80()
 { use integer;
   my ($encrypt, $done) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 40 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -699,8 +701,7 @@ sub Xuplast_ssse3_80()
 sub Xloop_ssse3()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -730,8 +731,7 @@ sub Xloop_ssse3()
 sub Xtail_ssse3()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	foreach (@insns) { eval; }
@@ -1217,8 +1217,7 @@ ___
 sub Xupdate_avx_16_31()		# recall that $Xi starts wtih 4
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 40 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1293,8 +1292,7 @@ sub Xupdate_avx_16_31()		# recall that $Xi starts wtih 4
 sub Xupdate_avx_32_79()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 to 48 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 to 48 instructions
   my ($a,$b,$c,$d,$e);
 
 	&vpalignr(@Tx[0],@X[-1&7],@X[-2&7],8);	# compose "X[-6]"
@@ -1353,8 +1351,7 @@ sub Xupdate_avx_32_79()
 sub Xuplast_avx_80()
 { use integer;
   my ($encrypt, $done) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1386,8 +1383,7 @@ sub Xuplast_avx_80()
 sub Xloop_avx()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1411,8 +1407,7 @@ sub Xloop_avx()
 sub Xtail_avx()
 { use integer;
   my ($encrypt) = @_;
-  my @insns = (sha1_round($encrypt), sha1_round($encrypt),
-               sha1_round($encrypt), sha1_round($encrypt));	# 32 instructions
+  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	foreach (@insns) { eval; }
