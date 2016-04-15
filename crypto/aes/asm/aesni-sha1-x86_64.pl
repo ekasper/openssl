@@ -511,8 +511,7 @@ ___
 
 sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
+  my @insns = @_;			# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));		# ror
@@ -593,8 +592,7 @@ sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
 
 sub Xupdate_ssse3_32_79()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 to 44 instructions
+  my @insns = @_;			# 32 to 44 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns))		if ($Xi==8);
@@ -665,8 +663,7 @@ sub Xupdate_ssse3_32_79()
 
 sub Xuplast_ssse3_80()
 { use integer;
-  my ($encrypt, $done) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
+  my ($done, @insns) = @_;		# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -700,8 +697,7 @@ sub Xuplast_ssse3_80()
 
 sub Xloop_ssse3()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
+  my @insns = @_;				# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -730,8 +726,7 @@ sub Xloop_ssse3()
 
 sub Xtail_ssse3()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
+  my @insns = @_;				# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	foreach (@insns) { eval; }
@@ -741,32 +736,32 @@ $code.=<<___;
 .align	32
 .Loop_ssse3:
 ___
-	&Xupdate_ssse3_16_31(ENCRYPT);
-	&Xupdate_ssse3_16_31(ENCRYPT);
-	&Xupdate_ssse3_16_31(ENCRYPT);
-	&Xupdate_ssse3_16_31(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xupdate_ssse3_32_79(ENCRYPT);
-	&Xuplast_ssse3_80(ENCRYPT,".Ldone_ssse3");	# can jump to "done"
+	&Xupdate_ssse3_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xuplast_ssse3_80(".Ldone_ssse3", sha1_interleave(ENCRYPT, 4));	# can jump to "done"
 
 
 				@saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 				$saved_rx=$rx;
 
-	&Xloop_ssse3(ENCRYPT);
-	&Xloop_ssse3(ENCRYPT);
-	&Xloop_ssse3(ENCRYPT);
+	&Xloop_ssse3(sha1_interleave(ENCRYPT, 4));
+	&Xloop_ssse3(sha1_interleave(ENCRYPT, 4));
+	&Xloop_ssse3(sha1_interleave(ENCRYPT, 4));
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -795,9 +790,9 @@ ___
 				$rx=$saved_rx;
 
 
-	&Xtail_ssse3(ENCRYPT);
-	&Xtail_ssse3(ENCRYPT);
-	&Xtail_ssse3(ENCRYPT);
+	&Xtail_ssse3(sha1_interleave(ENCRYPT, 4));
+	&Xtail_ssse3(sha1_interleave(ENCRYPT, 4));
+	&Xtail_ssse3(sha1_interleave(ENCRYPT, 4));
 
 $code.=<<___;
 	movups	$iv,48($out,$in0)		# write output
@@ -981,30 +976,30 @@ $code.=<<___;
 .align	32
 .Loop_dec_ssse3:
 ___
-	&Xupdate_ssse3_16_31(DECRYPT);
-	&Xupdate_ssse3_16_31(DECRYPT);
-	&Xupdate_ssse3_16_31(DECRYPT);
-	&Xupdate_ssse3_16_31(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xupdate_ssse3_32_79(DECRYPT);
-	&Xuplast_ssse3_80(DECRYPT,".Ldone_dec_ssse3");	# can jump to "done"
+	&Xupdate_ssse3_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_ssse3_32_79(sha1_interleave(DECRYPT, 4));
+	&Xuplast_ssse3_80(".Ldone_dec_ssse3", sha1_interleave(DECRYPT, 4));	# can jump to "done"
 
 				@saved_V=@V;
 				$saved_rx=$rx;
 
-	&Xloop_ssse3(DECRYPT);
-	&Xloop_ssse3(DECRYPT);
-	&Xloop_ssse3(DECRYPT);
+	&Xloop_ssse3(sha1_interleave(DECRYPT, 4));
+	&Xloop_ssse3(sha1_interleave(DECRYPT, 4));
+	&Xloop_ssse3(sha1_interleave(DECRYPT, 4));
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
@@ -1031,9 +1026,9 @@ ___
 				@V=@saved_V;
 				$rx=$saved_rx;
 
-	&Xtail_ssse3(DECRYPT);
-	&Xtail_ssse3(DECRYPT);
-	&Xtail_ssse3(DECRYPT);
+	&Xtail_ssse3(sha1_interleave(DECRYPT, 4));
+	&Xtail_ssse3(sha1_interleave(DECRYPT, 4));
+	&Xtail_ssse3(sha1_interleave(DECRYPT, 4));
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
@@ -1216,8 +1211,7 @@ ___
 
 sub Xupdate_avx_16_31()		# recall that $Xi starts wtih 4
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 40 instructions
+  my @insns = @_;				# 40 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1291,8 +1285,7 @@ sub Xupdate_avx_16_31()		# recall that $Xi starts wtih 4
 
 sub Xupdate_avx_32_79()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 to 48 instructions
+  my @insns = @_;			# 32 to 48 instructions
   my ($a,$b,$c,$d,$e);
 
 	&vpalignr(@Tx[0],@X[-1&7],@X[-2&7],8);	# compose "X[-6]"
@@ -1350,8 +1343,7 @@ sub Xupdate_avx_32_79()
 
 sub Xuplast_avx_80()
 { use integer;
-  my ($encrypt, $done) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
+  my ($done, @insns) = @_;		# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1382,8 +1374,7 @@ sub Xuplast_avx_80()
 
 sub Xloop_avx()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
+  my @insns = @_;				# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	 eval(shift(@insns));
@@ -1406,8 +1397,7 @@ sub Xloop_avx()
 
 sub Xtail_avx()
 { use integer;
-  my ($encrypt) = @_;
-  my @insns = (sha1_interleave($encrypt, 4));	# 32 instructions
+  my @insns = @_;				# 32 instructions
   my ($a,$b,$c,$d,$e);
 
 	foreach (@insns) { eval; }
@@ -1417,31 +1407,31 @@ $code.=<<___;
 .align	32
 .Loop_avx:
 ___
-	&Xupdate_avx_16_31(ENCRYPT);
-	&Xupdate_avx_16_31(ENCRYPT);
-	&Xupdate_avx_16_31(ENCRYPT);
-	&Xupdate_avx_16_31(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xupdate_avx_32_79(ENCRYPT);
-	&Xuplast_avx_80(ENCRYPT,".Ldone_avx");	# can jump to "done"
+	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(ENCRYPT, 4));
+	&Xuplast_avx_80(".Ldone_avx", sha1_interleave(ENCRYPT, 4));	# can jump to "done"
 
 				@saved_V=@V;
 				$saved_r=$r; @saved_rndkey=@rndkey;
 				$saved_rx=$rx;
 
-	&Xloop_avx(ENCRYPT);
-	&Xloop_avx(ENCRYPT);
-	&Xloop_avx(ENCRYPT);
+	&Xloop_avx(sha1_interleave(ENCRYPT, 4));
+	&Xloop_avx(sha1_interleave(ENCRYPT, 4));
+	&Xloop_avx(sha1_interleave(ENCRYPT, 4));
 
 $code.=<<___;
 	vmovups	$iv,48($out,$in0)		# write output
@@ -1469,9 +1459,9 @@ ___
 				$r=$saved_r;     @rndkey=@saved_rndkey;
 				$rx=$saved_rx;
 
-	&Xtail_avx(ENCRYPT);
-	&Xtail_avx(ENCRYPT);
-	&Xtail_avx(ENCRYPT);
+	&Xtail_avx(sha1_interleave(ENCRYPT, 4));
+	&Xtail_avx(sha1_interleave(ENCRYPT, 4));
+	&Xtail_avx(sha1_interleave(ENCRYPT, 4));
 
 $code.=<<___;
 	vmovups	$iv,48($out,$in0)		# write output
@@ -1629,30 +1619,30 @@ $code.=<<___;
 .align	32
 .Loop_dec_avx:
 ___
-	&Xupdate_avx_16_31(DECRYPT);
-	&Xupdate_avx_16_31(DECRYPT);
-	&Xupdate_avx_16_31(DECRYPT);
-	&Xupdate_avx_16_31(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xupdate_avx_32_79(DECRYPT);
-	&Xuplast_avx_80(DECRYPT,".Ldone_dec_avx");	# can jump to "done"
+	&Xupdate_avx_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_16_31(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xupdate_avx_32_79(sha1_interleave(DECRYPT, 4));
+	&Xuplast_avx_80(".Ldone_dec_avx", sha1_interleave(DECRYPT, 4));	# can jump to "done"
 
 				@saved_V=@V;
 				$saved_rx=$rx;
 
-	&Xloop_avx(DECRYPT);
-	&Xloop_avx(DECRYPT);
-	&Xloop_avx(DECRYPT);
+	&Xloop_avx(sha1_interleave(DECRYPT, 4));
+	&Xloop_avx(sha1_interleave(DECRYPT, 4));
+	&Xloop_avx(sha1_interleave(DECRYPT, 4));
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
@@ -1679,9 +1669,9 @@ ___
 				@V=@saved_V;
 				$rx=$saved_rx;
 
-	&Xtail_avx(DECRYPT);
-	&Xtail_avx(DECRYPT);
-	&Xtail_avx(DECRYPT);
+	&Xtail_avx(sha1_interleave(DECRYPT, 4));
+	&Xtail_avx(sha1_interleave(DECRYPT, 4));
+	&Xtail_avx(sha1_interleave(DECRYPT, 4));
 
 	eval(@aes256_dec[-1]);			# last store
 $code.=<<___;
