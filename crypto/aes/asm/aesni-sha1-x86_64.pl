@@ -99,10 +99,19 @@ if ($flavour =~ /[nm]asm|mingw64/ || $output =~ /\.asm$/) {
     $win64 = 1;
 }
 
-$0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
-( $xlate="${dir}x86_64-xlate.pl" and -f $xlate ) or
-( $xlate="${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate) or
-die "can't locate x86_64-xlate.pl";
+# Locate xlate relative to the script's location.
+# TODO: perlasm should be properly supported by Configure.
+# This should be handled by the build scripts.
+$0 =~ m/(.*[\/\\])[^\/\\]+$/;
+my $dir = $1;
+my $xlate;
+
+($xlate = "${dir}x86_64-xlate.pl" and -f $xlate)
+    or ($xlate = "${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate)
+    or die "can't locate x86_64-xlate.pl";
+
+open my $out, "| \"$^X\" \"$xlate\" $flavour \"$output\"";
+*STDOUT = *$out;
 
 # This module emits up to four different flavours of  AESNI-SHA1:
 # (encrypt, decrypt) x (SSSE3, AVX) 
@@ -136,9 +145,6 @@ use constant {
     ENCRYPT => 1,
     DECRYPT => 0
 };
-
-open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\"";
-*STDOUT=*OUT;
 
 sub AUTOLOAD()		# thunk [simplified] 32-bit style perlasm
 { my $opcode = $AUTOLOAD; $opcode =~ s/.*:://;
