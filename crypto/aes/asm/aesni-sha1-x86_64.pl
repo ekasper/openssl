@@ -83,11 +83,21 @@
 # (**)	Execution is fully dominated by integer code sequence and
 #	SIMD still hardly shows [in single-process benchmark;-]
 
-$flavour = shift;
-$output  = shift;
-if ($flavour =~ /\./) { $output = $flavour; undef $flavour; }
+my $flavour = shift;
+my $output = shift;
 
-$win64=0; $win64=1 if ($flavour =~ /[nm]asm|mingw64/ || $output =~ /\.asm$/);
+# The assembler flavour is optional. If we detect a '.' in the first argument
+# we assume it's the output.
+if ($flavour =~ /\./) {
+    $output = $flavour;
+    undef $flavour;
+}
+
+my $win64 = 0;
+
+if ($flavour =~ /[nm]asm|mingw64/ || $output =~ /\.asm$/) {
+    $win64 = 1;
+}
 
 $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}x86_64-xlate.pl" and -f $xlate ) or
