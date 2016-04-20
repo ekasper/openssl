@@ -1579,7 +1579,6 @@ $code.=<<___;
 	lea	112(%rcx),$key 			# size optimization
 	vmovdqu	($ivp),@X[3]			# load IV
 ___
-($in0,$out,$len,$key)=map("%r$_",(12..15));	# reassign arguments
 $code.=<<___;
 	shl	\$6,$len
 	sub	$in0,$out
