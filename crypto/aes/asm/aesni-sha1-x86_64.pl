@@ -94,18 +94,32 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate) or
 die "can't locate x86_64-xlate.pl";
 
-$avx=1 if (`$ENV{CC} -Wa,-v -c -o /dev/null -x assembler /dev/null 2>&1`
-		=~ /GNU assembler version ([2-9]\.[0-9]+)/ &&
-	   $1>=2.19);
-$avx=1 if (!$avx && $win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
-	   `nasm -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)/ &&
-	   $1>=2.09);
-$avx=1 if (!$avx && $win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
-	   `ml64 2>&1` =~ /Version ([0-9]+)\./ &&
-	   $1>=10);
-$avx=1 if (!$avx && `$ENV{CC} -v 2>&1` =~ /((?:^clang|LLVM) version|.*based on LLVM) ([3-9]\.[0-9]+)/ && $2>=3.0);
+# This module emits up to four different flavours of  AESNI-SHA1:
+# (encrypt, decrypt) x (SSSE3, AVX) 
+# AVX code is only emitted if assembler AVX support is detected
+# Decryption code is disabled by default and can be enabled by setting
+# $stitched_decrypt = 1 below.
+my ($avx_capable, $stitched_decrypt);
 
-$stitched_decrypt=1;
+# Detect if the assembler is AVX-capable.
+# TODO: this should be done in Configure.
+if ((`$ENV{CC} -Wa,-v -c -o /dev/null -x assembler /dev/null 2>&1`
+     =~ /GNU assembler version ([2-9]\.[0-9]+)/
+     && $1 >= 2.19)
+    || ($win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
+        `nasm -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)/ &&
+        $1 >= 2.09)
+    || ($win64 && ($flavour =~ /masm/ || $ENV{ASM} =~ /ml64/) &&
+        `ml64 2>&1` =~ /Version ([0-9]+)\./ &&
+        $1 >= 10)
+    || (`$ENV{CC} -v 2>&1`
+        =~ /((?:^clang|LLVM) version|.*based on LLVM) ([3-9]\.[0-9]+)/
+        && $2 >= 3.0)) {
+  $avx_capable = 1;
+}
+
+# Temporarily enabled during refactor.
+$stitched_decrypt = 1;
 
 # Stitched AES+SHA-1 round direction.
 use constant {
@@ -128,7 +142,6 @@ my $_ror=sub { &ror(@_) };
 
 my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
 my ($in0,$out,$len,$key)=map("%r$_",(12..15));
-
 my $rounds="${ivp}d";
 my $Xi=4;
 my @X=map("%xmm$_",(4..7,0..3));
@@ -419,7 +432,7 @@ $code.=<<___;
 	bt	\$61,%r11		# check SHA bit
 	jc	aesni_cbc_sha1_enc_shaext
 ___
-$code.=<<___ if ($avx);
+$code.=<<___ if ($avx_capable);
 	and	\$`1<<28`,%r11d		# mask AVX bit
 	and	\$`1<<30`,%r10d		# mask "Intel CPU" bit
 	or	%r11d,%r10d
@@ -889,7 +902,7 @@ aesni256_cbc_sha1_dec:
 	mov	OPENSSL_ia32cap_P+0(%rip),%r10d
 	mov	OPENSSL_ia32cap_P+4(%rip),%r11d
 ___
-$code.=<<___ if ($avx);
+$code.=<<___ if ($avx_capable);
 	and	\$`1<<28`,%r11d		# mask AVX bit
 	and	\$`1<<30`,%r10d		# mask "Intel CPU" bit
 	or	%r11d,%r10d
@@ -1072,7 +1085,7 @@ ___
 						}}}
 $r=$rx=0;
 
-if ($avx) {
+if ($avx_capable) {
 my $Xi=4;
 my @X=map("%xmm$_",(4..7,0..3));
 my @Tx=map("%xmm$_",(8..10));
@@ -2020,7 +2033,7 @@ $code.=<<___;
 	.rva	.LSEH_end_aesni_cbc_sha1_enc_ssse3
 	.rva	.LSEH_info_aesni_cbc_sha1_enc_ssse3
 ___
-$code.=<<___ if ($avx);
+$code.=<<___ if ($avx_capable);
 	.rva	.LSEH_begin_aesni_cbc_sha1_enc_avx
 	.rva	.LSEH_end_aesni_cbc_sha1_enc_avx
 	.rva	.LSEH_info_aesni_cbc_sha1_enc_avx
@@ -2038,7 +2051,7 @@ $code.=<<___;
 	.rva	ssse3_handler
 	.rva	.Lprologue_ssse3,.Lepilogue_ssse3	# HandlerData[]
 ___
-$code.=<<___ if ($avx);
+$code.=<<___ if ($avx_capable);
 .LSEH_info_aesni_cbc_sha1_enc_avx:
 	.byte	9,0,0,0
 	.rva	ssse3_handler
