@@ -83,6 +83,10 @@
 # (**)	Execution is fully dominated by integer code sequence and
 #	SIMD still hardly shows [in single-process benchmark;-]
 
+# TODO: feed this properly to the build script.
+# use lib "crypto/perlasm";
+use Instruction qw(:DEFAULT);
+
 my $flavour = shift;
 my $output = shift;
 
@@ -146,15 +150,49 @@ use constant {
     DECRYPT => 0
 };
 
-sub AUTOLOAD()		# thunk [simplified] 32-bit style perlasm
-{ my $opcode = $AUTOLOAD; $opcode =~ s/.*:://;
-  my $arg = pop;
-    $arg = "\$$arg" if ($arg*1 eq $arg);
-    $code .= "\t$opcode\t".join(',',$arg,reverse @_)."\n";
+use constant {
+    SSSE3 => 1,
+    AVX => 0
+};
+
+# AUTOLOAD code buffer. Reset this before emitting each chunk.
+# (See Instruction.pm for details.)
+my @CODE;
+
+
+sub AUTOLOAD {
+    my $opcode = $AUTOLOAD;
+    $opcode =~ s/.*:://;  # Strip package specifier (here main::).
+    # Historically, autoloaded instructions were written in reverse argument
+    # order. We keep it so in this script.
+    my $instruction = op($opcode, reverse @_);
+    push @CODE, $instruction;
+    # Sometimes we want to buffer; sometimes we want to retrieve the
+    # instruction directly.
+    return $instruction;
 }
 
-my $_rol=sub { &rol(@_) };
-my $_ror=sub { &ror(@_) };
+my $mode;
+
+# On SSSE3, use ror/rol. On AVX, we'll substitute this with shld/shrd.
+sub _rol {
+    if ($mode == SSSE3) {
+        return &rol(@_);
+    } else {
+        return &shld(@_[0],@_[0],@_[1]);
+    }
+}
+
+sub _ror {
+    if ($mode == SSSE3) {
+        return &ror(@_);
+    } else {
+        return &shrd(@_[0],@_[0],@_[1]);
+    }
+}
+
+########################## SSSE3 encrypt ######################################
+$mode = SSSE3;
 
 my ($ivp,$ctx,$inp)=("%r8","%r9","%r10");
 my ($in0,$out,$len,$key)=map("%r$_",(12..15));
@@ -180,49 +218,54 @@ if (1) {	# reassign for Atom Silvermont
     @rndkey=("%xmm0","%xmm1");
 }
 
-my $aesenc=sub {
-  use integer;
-  my ($n,$k)=($r/10,$r%10);
+sub aes_enc_ssse3 {
+    use integer;
 
-    if ($k==0) {
-      $code.=<<___;
-	movups		`16*$n`($in0),$in		# load input
-	xorps		$rndkey0,$in
-___
-      $code.=<<___ if ($n);
-	movups		$iv,`16*($n-1)`($out,$in0)	# write output
-___
-      $code.=<<___;
-	xorps		$in,$iv
-	movups		`32+16*$k-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-___
-    } elsif ($k==9) {
-      $sn++;
-      $code.=<<___;
-	cmp		\$11,$rounds
-	jb		.Laesenclast$sn
-	movups		`32+16*($k+0)-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-	movups		`32+16*($k+1)-112`($key),$rndkey[0]
-	aesenc		$rndkey[1],$iv
-	je		.Laesenclast$sn
-	movups		`32+16*($k+2)-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-	movups		`32+16*($k+3)-112`($key),$rndkey[0]
-	aesenc		$rndkey[1],$iv
-.Laesenclast$sn:
-	aesenclast	$rndkey[0],$iv
-	movups		16-112($key),$rndkey[1]		# forward reference
-___
-    } else {
-      $code.=<<___;
-	movups		`32+16*$k-112`($key),$rndkey[1]
-	aesenc		$rndkey[0],$iv
-___
-    }
-    $r++;	unshift(@rndkey,pop(@rndkey));
+    my ($n,$k) = ($r/10, $r%10);
+
+    undef @CODE; {
+
+        if ($k==0) {
+            &movups ($in,(16*$n)."($in0)");          # load input
+            &xorps  ($in,$rndkey0);
+
+            &movups ((16*($n-1))."($out,$in0)",$iv) if ($n > 0);   # write output
+
+            &xorps  ($iv,$in);
+            &movups ($rndkey[1],(32+16*$k-112)."($key)");
+            &aesenc ($iv,$rndkey[0]);
+        } elsif ($k==9) {
+            $sn++;
+            &cmp    ($rounds,11);
+            &jb     (".Laesenclast$sn");
+            &movups ($rndkey[1],(32+16*($k+0)-112)."($key)");
+            &aesenc ($iv,$rndkey[0]);
+            &movups ($rndkey[0],(32+16*($k+1)-112)."($key)");
+            &aesenc ($iv,$rndkey[1]);
+            &je     (".Laesenclast$sn");
+            &movups ($rndkey[1],(32+16*($k+2)-112)."($key)");
+            &aesenc ($iv,$rndkey[0]);
+            &movups ($rndkey[0],(32+16*($k+3)-112)."($key)");
+            &aesenc ($iv,$rndkey[1]);
+
+            &label  (".Laesenclast$sn:");
+
+            &aesenclast  ($iv,$rndkey[0]);
+            &movups ($rndkey[1],"16-112($key)");              # forward reference
+        } else {
+            &movups ($rndkey[1],(32+16*$k-112)."($key)");
+            &aesenc ($iv,$rndkey[0]);
+        }
+
+    } my $aes_code = join("", @CODE);
+
+    $r++;
+    unshift(@rndkey, pop @rndkey);
+    return $aes_code;
 };
+
+# Defined below.
+sub aes_enc_avx;
 
 # We distribute AES encryptions evenly in every block of 20 SHA-1 rounds.
 #
@@ -265,17 +308,6 @@ sub interleave_offset {
 # V = (e, a, b, c, d)
 #
 # Each round also precomputes F partially for the next round.
-my $sha1_round_prologue =
-	'($a,$b,$c,$d,$e)=@V;';
-
-my $sha1_round_epilogue =
-	# V = (e, a, b, c, d)
-	'unshift(@V,pop(@V));' .
-	# Precomputation is read from T[0] in the current round,
-	# and written into T[1] for the next round.
-	# Swap T[0] and T[1] to hand over the precomputation to the
-	# next round.
-	'unshift(@T,pop(@T));';
 
 # SHA-1 rounds 00-19. The nonlinear function is
 # F = (b & (c ^ d)) ^ d
@@ -287,28 +319,37 @@ my $sha1_round_epilogue =
 # interleave with the precomputation for round 20.
 sub sha1_00_19 {
     my ($rx, $offset) = @_;
-    # In every round apart from the first, b is shifted left by 5 by the
-    # previous round.
-    my $rotate = $rx ? 7 : 2;
 
-    my @ret = (
-	$sha1_round_prologue .
-	'&$_ror	($b,'. "$rotate);",	# $b>>>2
-	'&xor	(@T[0],$d);',
-	'&mov	(@T[1],$a);',	# $b for next round
+    my ($a, $b, $c, $d, $e) = @V;
 
-        # Temporary eval-ugliness. We will fix this later.
-	'&add	($e,"' . "$offset" . '(%rsp)");', # X[]+K xfer
-	'&xor	($b,$c);',	# $c^$d for next round
+    undef @CODE; {
 
-	'&$_rol	($a,5);',
-	'&add	($e,@T[0]);',
-	'&and	(@T[1],$b);',	# ($b&($c^$d)) for next round
+	_ror	($b,$rx?7:2);		# offset >>> 5 from the previous round
+	&xor	(@T[0],$d);		# T[0] = F(b, c, d)
+	&mov	(@T[1],$a);   		# $b for next round
 
-	'&xor	($b,$c);',	# restore $b
-	'&add	($e,$a);' .
-	$sha1_round_epilogue
-	);
+	&add	($e,$offset."(%rsp)");	# X[] + K xfer
+	&xor	($b,$c);		# c ^ d for the next round; garbles $b
+
+	_rol	($a,5);			# offset >>> 5 for the next round
+	&add	($e,@T[0]);
+	&and	(@T[1],$b);		# b & (c ^ d) for the next round
+
+	&xor	($b,$c);		# restore $b
+	&add	($e,$a);
+
+    } my @ret = @CODE;
+
+    # V = (e, a, b, c, d)
+    unshift (@V, pop @V);
+    # Precomputation is read from T[0] in the current round,
+    # and written into T[1] for the next round.
+    # Swap T[0] and T[1] to hand over the precomputation to the
+    # next round.
+    unshift (@T, pop @T);
+
+    # print @ret;
+
     return @ret;
 }
 
@@ -322,20 +363,30 @@ sub sha1_00_19 {
 # interleave with the precomputation for round 40.
 sub sha1_20_39 {
     my ($rx, $offset) = @_;
-    my @ret = ();
 
-    push @ret,   $sha1_round_prologue
-	       . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
-    push @ret,   '&xor	(@T[0],$d)' if ($rx == 19);
-    push @ret,   '&xor	(@T[0],$c)' if ($rx > 19);	# ($b^$d^$c)
-    push @ret,   '&mov	(@T[1],$a);';	# $b for next round
-    push @ret,   '&$_rol	($a,5);';
-    push @ret,   '&add	($e,@T[0]);';
-    push @ret,   '&xor	(@T[1],$c)' if ($rx < 79);	# $b^$d for next round
-    push @ret,   '&$_ror	($b,7);';	# $b>>>2
-    push @ret,   '&add	($e,$a);'
-               . $sha1_round_epilogue;
+    my ($a, $b, $c, $d, $e) = @V;
 
+    undef @CODE; {
+
+	&add	($e,$offset."(%rsp)");		# X[] + K xfer
+	&xor	(@T[0],$d) if ($rx == 19);
+	&xor	(@T[0],$c) if ($rx > 19);	# T[0] = F(b, c, d)
+	&mov	(@T[1],$a);			# b for next round
+	_rol	($a,5);
+	&add	($e,@T[0]);
+	&xor	(@T[1],$c) if ($rx < 79);	# b ^ d for next round
+	_ror	($b,7);				# offset >>> 5 from the previous round
+	&add	($e,$a);
+
+    } my @ret = @CODE;
+
+    # V = (e, a, b, c, d)
+    unshift (@V, pop @V);
+    # Precomputation is read from T[0] in the current round,
+    # and written into T[1] for the next round.
+    # Swap T[0] and T[1] to hand over the precomputation to the
+    # next round.
+    unshift (@T, pop @T);
     return @ret;
 }
 
@@ -349,26 +400,36 @@ sub sha1_20_39 {
 # this block competes round 59 and precomputes (b ^ d) for round 60.
 sub sha1_40_59 {
     my ($rx, $offset) = @_;
-    my @ret = ();
 
-    push @ret,  $sha1_round_prologue
-              . '&add	($e,"' . "$offset" . '(%rsp)");'; # X[]+K xfer
-    push @ret,	'&and	(@T[0],$c)'	if ($rx >= 40);	 # (b^c)&(c^d)
-    push @ret,	'&xor	($c,$d)'	if ($rx >= 40);	 # restore $c
+    my ($a, $b, $c, $d, $e) = @V;
 
-    push @ret,	'&$_ror	($b,7);';	# $b>>>2
-    push @ret,  '&mov	(@T[1],$a);';	# $b for next round
-    push @ret,  '&xor	(@T[0],$c);';
+    undef @CODE; {
 
-    push @ret,	'&$_rol	($a,5);';
-    push @ret,	'&add	($e,@T[0]);';
-    push @ret,	'&xor	(@T[1],$c)'	if ($rx == 59);
-    push @ret,	'&xor	(@T[1],$b)'	if ($rx < 59);	# b^c for next round
+	&add	($e,$offset."(%rsp)");		# X[] + K xfer
+	&and	(@T[0],$c) if ($rx >= 40);	# c is clobbered c = c ^ d
+	&xor	($c,$d) if ($rx >= 40);		# restore c
 
-    push @ret,  '&xor	($b,$c)'	if ($rx < 59);	# c^d for next round
-    push @ret,  '&add	($e,$a);'
-              . $sha1_round_epilogue;
+	_ror	($b,7);				# offset >>> 5 from the previous round
+	&mov	(@T[1],$a);			# b for next round
+	&xor	(@T[0],$c);			# T[0] = F(b, c, d)
 
+	_rol	($a,5);
+	&add	($e,@T[0]);
+	&xor	(@T[1],$c) if ($rx == 59);
+	&xor	(@T[1],$b) if ($rx < 59);	# b ^ c for next round
+
+	&xor	($b,$c) if ($rx < 59);		# clobbers c = c ^ d for next round
+	&add	($e,$a);
+
+    } my @ret = @CODE;
+
+    # V = (e, a, b, c, d)
+    unshift (@V, pop @V);
+    # Precomputation is read from T[0] in the current round,
+    # and written into T[1] for the next round.
+    # Swap T[0] and T[1] to hand over the precomputation to the
+    # next round.
+    unshift (@T, pop @T);
     return @ret;
 }
 
@@ -411,7 +472,13 @@ sub sha1_interleave {
         if ($encrypt == ENCRYPT) {
             if ($rx != 19 && $rx != 39) {
                 my $offset = interleave_offset(scalar @round_body, $rx, $num_aes_enc);
-                @round_body[$offset] .= '&$aesenc();' if defined $offset;
+                if (defined $offset) {
+                    if ($mode == SSSE3) {
+                        @round_body[$offset] .= aes_enc_ssse3();
+                    } else {
+                        @round_body[$offset] .= aes_enc_avx();
+                    }
+                }
             }
         } else {
             unshift (@round_body, @aes256_dec[$rx]) if (@aes256_dec[$rx]);
@@ -421,6 +488,7 @@ sub sha1_interleave {
         $rx++;
         push @instructions, @round_body;
     }
+
     return @instructions;
 }
 
@@ -538,174 +606,197 @@ $code.=<<___;
 	jmp	.Loop_ssse3
 ___
 
-sub Xupdate_ssse3_16_31()		# recall that $Xi starts wtih 4
-{ use integer;
-  my @insns = @_;			# 40 instructions
-  my ($a,$b,$c,$d,$e);
+sub emit {
+    my ($instructions) = @_;
+    push @CODE, shift @$instructions;
+}
 
-	 eval(shift(@insns));		# ror
+# recall that $Xi starts with 4
+sub Xupdate_ssse3_16_31 {
+    use integer;
+    my @insns = @_;  # 40 instructions
+
+    undef @CODE; {
+
+	 emit \@insns;		# ror
 	&pshufd	(@X[0],@X[-4&7],0xee);	# was &movdqa	(@X[0],@X[-3&7]);
-	 eval(shift(@insns));
+	 emit \@insns;
 	&movdqa	(@Tx[0],@X[-1&7]);
 	  &paddd	(@Tx[1],@X[-1&7]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	&punpcklqdq(@X[0],@X[-3&7]);	# compose "X[-14]" in "X[0]", was &palignr(@X[0],@X[-4&7],8);
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
 	&psrldq	(@Tx[0],4);		# "X[-3]", 3 dwords
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	&pxor	(@X[0],@X[-4&7]);	# "X[0]"^="X[-16]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
+	 emit \@insns;
+	 emit \@insns;		# ror
 	&pxor	(@Tx[0],@X[-2&7]);	# "X[-3]"^"X[-8]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&pxor	(@X[0],@Tx[0]);		# "X[0]"^="X[-3]"^"X[-8]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	  &movdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;		# rol
+	  &movdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
+	 emit \@insns;
+	 emit \@insns;
 
 	&movdqa	(@Tx[2],@X[0]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# ror
 	&movdqa	(@Tx[0],@X[0]);
-	 eval(shift(@insns));
+	 emit \@insns;
 
 	&pslldq	(@Tx[2],12);		# "X[0]"<<96, extract one dword
 	&paddd	(@X[0],@X[0]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	&psrld	(@Tx[0],31);
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
 	&movdqa	(@Tx[1],@Tx[2]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	&psrld	(@Tx[2],30);
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
+	 emit \@insns;
+	 emit \@insns;		# ror
 	&por	(@X[0],@Tx[0]);		# "X[0]"<<<=1
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&pslld	(@Tx[1],2);
 	&pxor	(@X[0],@Tx[2]);
-	 eval(shift(@insns));
-	  &movdqa	(@Tx[2],eval(16*(($Xi)/5))."($K_XX_XX)");	# K_XX_XX
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	  &movdqa	(@Tx[2],(16*(($Xi)/5))."($K_XX_XX)");	# K_XX_XX
+	 emit \@insns;		# rol
+	 emit \@insns;
+	 emit \@insns;
 
 	&pxor	(@X[0],@Tx[1]);		# "X[0]"^=("X[0]">>96)<<<2
 	&pshufd (@Tx[1],@X[-1&7],0xee)	if ($Xi==7);	# was &movdqa	(@Tx[0],@X[-1&7]) in Xupdate_ssse3_32_79
 
-	 foreach (@insns) { eval; }	# remaining instructions [if any]
+        foreach (1 .. scalar @insns) {	# remaining instructions (if any)
+            emit \@insns;
+        }
 
-  $Xi++;	push(@X,shift(@X));	# "rotate" X[]
-		push(@Tx,shift(@Tx));
+    } $code .= join("", @CODE);
+
+    $Xi++;
+
+    push(@X, shift @X);  # "rotate" X[]
+    push(@Tx, shift @Tx);
 }
 
-sub Xupdate_ssse3_32_79()
-{ use integer;
-  my @insns = @_;			# 32 to 44 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xupdate_ssse3_32_79 {
+    use integer;
+    my @insns = @_;  # 32 to 44 instructions
 
-	 eval(shift(@insns))		if ($Xi==8);
+    undef @CODE; {
+
+	 emit \@insns		if ($Xi==8);
 	&pxor	(@X[0],@X[-4&7]);	# "X[0]"="X[-32]"^"X[-16]"
-	 eval(shift(@insns))		if ($Xi==8);
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns))		if (@insns[1] =~ /_ror/);
-	 eval(shift(@insns))		if (@insns[0] =~ /_ror/);
+	 emit \@insns		if ($Xi==8);
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns		if (@insns[1] =~ /ror/);
+	 emit \@insns		if (@insns[0] =~ /ror/);
 	&punpcklqdq(@Tx[0],@X[-1&7]);	# compose "X[-6]", was &palignr(@Tx[0],@X[-2&7],8);
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
+	 emit \@insns;
+	 emit \@insns;		# rol
 
 	&pxor	(@X[0],@X[-7&7]);	# "X[0]"^="X[-28]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 	if ($Xi%5) {
 	  &movdqa	(@Tx[2],@Tx[1]);# "perpetuate" K_XX_XX...
 	} else {			# ... or load next one
-	  &movdqa	(@Tx[2],eval(16*($Xi/5))."($K_XX_XX)");
+	  &movdqa	(@Tx[2],(16*($Xi/5))."($K_XX_XX)");
 	}
-	 eval(shift(@insns));		# ror
+	 emit \@insns;		# ror
 	  &paddd	(@Tx[1],@X[-1&7]);
-	 eval(shift(@insns));
+	 emit \@insns;
 
 	&pxor	(@X[0],@Tx[0]);		# "X[0]"^="X[-6]"
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns))		if (@insns[0] =~ /_ror/);
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns		if (@insns[0] =~ /ror/);
 
 	&movdqa	(@Tx[0],@X[0]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	  &movdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));		# ror
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	  &movdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
+	 emit \@insns;		# ror
+	 emit \@insns;
+	 emit \@insns;		# body_20_39
 
 	&pslld	(@X[0],2);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 	&psrld	(@Tx[0],30);
-	 eval(shift(@insns))		if (@insns[0] =~ /_rol/);# rol
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
+	 emit \@insns		if (@insns[0] =~ /rol/);# rol
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# ror
 
 	&por	(@X[0],@Tx[0]);		# "X[0]"<<<=2
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns))		if (@insns[1] =~ /_rol/);
-	 eval(shift(@insns))		if (@insns[0] =~ /_rol/);
+	 emit \@insns;
+	 emit \@insns;		# body_20_39
+	 emit \@insns		if (@insns[1] =~ /rol/);
+	 emit \@insns		if (@insns[0] =~ /rol/);
 	  &pshufd(@Tx[1],@X[-1&7],0xee)	if ($Xi<19);	# was &movdqa	(@Tx[1],@X[0])
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
 
-	 foreach (@insns) { eval; }	# remaining instructions
+        foreach (1 .. scalar @insns) {	# remaining instructions
+            emit \@insns;
+        }
 
-  $Xi++;	push(@X,shift(@X));	# "rotate" X[]
-		push(@Tx,shift(@Tx));
+    } $code .= join("", @CODE);
+
+    $Xi++;
+    push(@X, shift @X);  # "rotate" X[]
+    push(@Tx, shift @Tx);
 }
 
-sub Xuplast_ssse3_80()
-{ use integer;
-  my ($done, @insns) = @_;		# 40 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xuplast_ssse3_80 {
+    use integer;
+    my ($done, @insns) = @_;  # 40 instructions
 
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+    undef @CODE; {
+
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 	  &paddd	(@Tx[1],@X[-1&7]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
-	  &movdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer IALU
+	  &movdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer IALU
 
-	 foreach (@insns) { eval; }		# remaining instructions
+
+	foreach (1 .. scalar @insns) {	# remaining instructions
+	    emit \@insns;
+	}
 
 	&cmp	($inp,$len);
 	&je	($done);
@@ -721,44 +812,51 @@ sub Xuplast_ssse3_80()
 	&pshufb	(@X[-4&7],@Tx[2]);		# byte swap
 	&add	($inp,64);
 
+    } $code .= join("", @CODE);
+
   $Xi=0;
 }
 
-sub Xloop_ssse3()
-{ use integer;
-  my @insns = @_;				# 32 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xloop_ssse3 {
+    use integer;
+    my @insns = @_;  # 32 instructions
 
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+    undef @CODE; {
+
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 	&pshufb	(@X[($Xi-3)&7],@Tx[2]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 	&paddd	(@X[($Xi-4)&7],@Tx[1]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	&movdqa	(eval(16*$Xi)."(%rsp)",@X[($Xi-4)&7]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	&movdqa	((16*$Xi)."(%rsp)",@X[($Xi-4)&7]);	# X[]+K xfer to IALU
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 	&psubd	(@X[($Xi-4)&7],@Tx[1]);
 
-	foreach (@insns) { eval; }
+	foreach (1 .. scalar @insns) {	# remaining instructions
+	    emit \@insns;
+	}
+
+    } $code .= join("", @CODE);
+
   $Xi++;
 }
 
-sub Xtail_ssse3()
-{ use integer;
-  my @insns = @_;				# 32 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xtail_ssse3 {
+    use integer;
+    my @insns = @_;  # 32 instructions
 
-	foreach (@insns) { eval; }
+    $code .= join("", @insns);
 }
 
 $code.=<<___;
@@ -865,6 +963,8 @@ $code.=<<___;
 .size	aesni_cbc_sha1_enc_ssse3,.-aesni_cbc_sha1_enc_ssse3
 ___
 
+########################## SSSE3 decrypt ######################################
+
 						if ($stitched_decrypt) {{{
 # reset
 $r=$rx=0;
@@ -875,39 +975,47 @@ $Xi=4;
 @X=map("%xmm$_",(8..13,6,7));
 @Tx=map("%xmm$_",(14,15,5));
 
+# Hand-craft an interleave array for decryption.
 @aes256_dec = (
-	'&movdqu($inout0,"0x00($in0)");',
-	'&movdqu($inout1,"0x10($in0)");	&pxor	($inout0,$rndkey0);',
-	'&movdqu($inout2,"0x20($in0)");	&pxor	($inout1,$rndkey0);',
-	'&movdqu($inout3,"0x30($in0)");	&pxor	($inout2,$rndkey0);',
+    &movdqu($inout0,"0x00($in0)"),
+    &movdqu($inout1,"0x10($in0)") . &pxor($inout0,$rndkey0),
+    &movdqu($inout2,"0x20($in0)") . &pxor($inout1,$rndkey0),
+    &movdqu($inout3,"0x30($in0)") . &pxor($inout2,$rndkey0),
 
-	'&pxor	($inout3,$rndkey0);	&movups	($rndkey0,"16-112($key)");',
-	'&movaps("64(%rsp)",@X[2]);',	# save IV, originally @X[3]
-	undef,undef
-	);
-for ($i=0;$i<13;$i++) {
-    push (@aes256_dec,(
-	'&aesdec	($inout0,$rndkey0);',
-	'&aesdec	($inout1,$rndkey0);',
-	'&aesdec	($inout2,$rndkey0);',
-	'&aesdec	($inout3,$rndkey0);	&movups($rndkey0,"'.(16*($i+2)-112).'($key)");'
-	));
-    push (@aes256_dec,(undef,undef))	if (($i>=3 && $i<=5) || $i>=11);
-    push (@aes256_dec,(undef,undef))	if ($i==5);
+    &pxor   ($inout3,$rndkey0) .    &movups($rndkey0,"16-112($key)"),
+    &movaps("64(%rsp)",@X[3]),      # save IV
+    undef,undef
+  );
+
+for ($i = 0; $i < 13; $i++) {
+    push @aes256_dec, (
+        &aesdec($inout0,$rndkey0),
+        &aesdec($inout1,$rndkey0),
+        &aesdec($inout2,$rndkey0),
+        &aesdec($inout3,$rndkey0) . &movups($rndkey0,(16*($i+2)-112)."($key)")
+    );
+
+    if (($i >= 3 && $i <=5) || $i >= 11) {
+        push @aes256_dec, (undef,undef);
+    }
+    if ($i == 5) {
+        push  @aes256_dec, (undef,undef);
+    }
 }
-push(@aes256_dec,(
-	'&aesdeclast	($inout0,$rndkey0);	&movups	(@X[0],"0x00($in0)");',
-	'&aesdeclast	($inout1,$rndkey0);	&movups	(@X[1],"0x10($in0)");',
-	'&aesdeclast	($inout2,$rndkey0);	&movups	(@X[2],"0x20($in0)");',
-	'&aesdeclast	($inout3,$rndkey0);	&movups	(@X[3],"0x30($in0)");',
 
-	'&xorps		($inout0,"64(%rsp)");	&movdqu	($rndkey0,"-112($key)");',
-	'&xorps		($inout1,@X[0]);	&movups	("0x00($out,$in0)",$inout0);',
-	'&xorps		($inout2,@X[1]);	&movups	("0x10($out,$in0)",$inout1);',
-	'&xorps		($inout3,@X[2]);	&movups	("0x20($out,$in0)",$inout2);',
+push @aes256_dec, (
+    &aesdeclast($inout0,$rndkey0) . &movups(@X[0],"0x00($in0)"),
+    &aesdeclast($inout1,$rndkey0) . &movups(@X[1],"0x10($in0)"),
+    &aesdeclast($inout2,$rndkey0) . &movups(@X[2],"0x20($in0)"),
+    &aesdeclast($inout3,$rndkey0) . &movups(@X[3],"0x30($in0)"),
 
-	'&movups	("0x30($out,$in0)",$inout3);'
-	));
+    &xorps($inout0,"64(%rsp)") . &movdqu ($rndkey0,"-112($key)"),
+    &xorps($inout1,@X[0])      . &movups("0x00($out,$in0)",$inout0),
+    &xorps($inout2,@X[1])      . &movups("0x10($out,$in0)",$inout1),
+    &xorps($inout3,@X[2])      . &movups("0x20($out,$in0)",$inout2),
+
+    &movups ("0x30($out,$in0)",$inout3)
+  );
 
 $code.=<<___;
 .globl	aesni256_cbc_sha1_dec
@@ -1030,7 +1138,7 @@ ___
 	&Xloop_ssse3(sha1_interleave(DECRYPT, 4));
 	&Xloop_ssse3(sha1_interleave(DECRYPT, 4));
 
-	eval(@aes256_dec[-1]);			# last store
+	$code .= @aes256_dec[-1];			# last store
 $code.=<<___;
 	lea	64($in0),$in0
 
@@ -1059,7 +1167,7 @@ ___
 	&Xtail_ssse3(sha1_interleave(DECRYPT, 4));
 	&Xtail_ssse3(sha1_interleave(DECRYPT, 4));
 
-	eval(@aes256_dec[-1]);			# last store
+	$code .= @aes256_dec[-1];			# last store
 $code.=<<___;
 	add	0($ctx),$A			# update context
 	add	4($ctx),@T[0]
@@ -1099,21 +1207,24 @@ $code.=<<___;
 .size	aesni256_cbc_sha1_dec_ssse3,.-aesni256_cbc_sha1_dec_ssse3
 ___
 						}}}
+
+########################## AVX encrypt ########################################
+
+$mode = AVX;
+
 $r=$rx=0;
 
-if ($avx_capable) {
-my $Xi=4;
-my @X=map("%xmm$_",(4..7,0..3));
-my @Tx=map("%xmm$_",(8..10));
-my @V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
-my @T=("%esi","%edi");
-my ($rndkey0,$iv,$in)=map("%xmm$_",(11..13));
-my @rndkey=("%xmm14","%xmm15");
-my ($inout0,$inout1,$inout2,$inout3)=map("%xmm$_",(12..15));	# for dec
+$Xi=4;
+@X=map("%xmm$_",(4..7,0..3));
+@Tx=map("%xmm$_",(8..10));
+@V=($A,$B,$C,$D,$E)=("%eax","%ebx","%ecx","%edx","%ebp");	# size optimization
+@T=("%esi","%edi");
+($rndkey0,$iv,$in)=map("%xmm$_",(11..13));
+@rndkey=("%xmm14","%xmm15");
+($inout0,$inout1,$inout2,$inout3)=map("%xmm$_",(12..15));	# for dec
 my $Kx=@Tx[2];
 
-my $_rol=sub { &shld(@_[0],@_) };
-my $_ror=sub { &shrd(@_[0],@_) };
+if ($avx_capable) {
 
 $code.=<<___;
 .type	aesni_cbc_sha1_enc_avx,\@function,6
@@ -1194,197 +1305,215 @@ $code.=<<___;
 	jmp	.Loop_avx
 ___
 
-my $aesenc=sub {
-  use integer;
-  my ($n,$k)=($r/10,$r%10);
-    if ($k==0) {
-      $code.=<<___;
-	vmovdqu		`16*$n`($in0),$in		# load input
-	vpxor		$rndkey[1],$in,$in
-___
-      $code.=<<___ if ($n);
-	vmovups		$iv,`16*($n-1)`($out,$in0)	# write output
-___
-      $code.=<<___;
-	vpxor		$in,$iv,$iv
-	vaesenc		$rndkey[0],$iv,$iv
-	vmovups		`32+16*$k-112`($key),$rndkey[1]
-___
-    } elsif ($k==9) {
-      $sn++;
-      $code.=<<___;
-	cmp		\$11,$rounds
-	jb		.Lvaesenclast$sn
-	vaesenc		$rndkey[0],$iv,$iv
-	vmovups		`32+16*($k+0)-112`($key),$rndkey[1]
-	vaesenc		$rndkey[1],$iv,$iv
-	vmovups		`32+16*($k+1)-112`($key),$rndkey[0]
-	je		.Lvaesenclast$sn
-	vaesenc		$rndkey[0],$iv,$iv
-	vmovups		`32+16*($k+2)-112`($key),$rndkey[1]
-	vaesenc		$rndkey[1],$iv,$iv
-	vmovups		`32+16*($k+3)-112`($key),$rndkey[0]
-.Lvaesenclast$sn:
-	vaesenclast	$rndkey[0],$iv,$iv
-	vmovups		-112($key),$rndkey[0]
-	vmovups		16-112($key),$rndkey[1]		# forward reference
-___
-    } else {
-      $code.=<<___;
-	vaesenc		$rndkey[0],$iv,$iv
-	vmovups		`32+16*$k-112`($key),$rndkey[1]
-___
-    }
-    $r++;	unshift(@rndkey,pop(@rndkey));
+sub aes_enc_avx {
+    use integer;
+
+    my ($n, $k) = ($r/10, $r%10);
+
+    undef @CODE; {
+
+	if ($k == 0) {
+	    &vmovdqu	($in,(16*$n)."($in0)");	# load input
+	    &vpxor	($in,$in,$rndkey[1]);
+
+	    &vmovups	((16*($n-1))."($out,$in0)",$iv) if $n > 0;	# write output
+
+	    &vpxor	($iv,$iv,$in);
+	    &vaesenc	($iv,$iv,$rndkey[0]);
+	    &vmovups	($rndkey[1],(32+16*$k-112)."($key)");
+	} elsif ($k == 9) {
+	    $sn++;
+	    &cmp	($rounds,11);
+	    &jb	(".Lvaesenclast$sn");
+	    &vaesenc	($iv,$iv,$rndkey[0]);
+	    &vmovups	($rndkey[1],(32+16*($k+0)-112)."($key)");
+	    &vaesenc	($iv,$iv,$rndkey[1]);
+	    &vmovups	($rndkey[0],(32+16*($k+1)-112)."($key)");
+	    &je	(".Lvaesenclast$sn");
+	    &vaesenc	($iv,$iv,$rndkey[0]);
+	    &vmovups	($rndkey[1],(32+16*($k+2)-112)."($key)");
+	    &vaesenc	($iv,$iv,$rndkey[1]);
+	    &vmovups	($rndkey[0],(32+16*($k+3)-112)."($key)");
+
+	    &label	(".Lvaesenclast$sn:");
+
+	    &vaesenclast($iv,$iv,$rndkey[0]);
+	    &vmovups	($rndkey[0],"-112($key)");
+	    &vmovups	( $rndkey[1],"16-112($key)");	# forward reference
+	} else {
+	    &vaesenc ($iv,$iv,$rndkey[0]);
+	    &vmovups ($rndkey[1],(32+16*$k-112)."($key)");
+	}
+
+    } my $aes_code = join("", @CODE);
+
+    $r++;
+    unshift(@rndkey, pop @rndkey);
+    return $aes_code;
 };
 
-sub Xupdate_avx_16_31()		# recall that $Xi starts wtih 4
-{ use integer;
-  my @insns = @_;				# 40 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xupdate_avx_16_31 {	 # recall that $Xi starts wtih 4
+    use integer;
+    my @insns = @_;				# 40 instructions
 
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+    undef @CODE; {
+
+	 emit \@insns;
+	 emit \@insns;
 	&vpalignr(@X[0],@X[-3&7],@X[-4&7],8);	# compose "X[-14]" in "X[0]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	  &vpaddd	(@Tx[1],$Kx,@X[-1&7]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 	&vpsrldq(@Tx[0],@X[-1&7],4);		# "X[-3]", 3 dwords
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 	&vpxor	(@X[0],@X[0],@X[-4&7]);		# "X[0]"^="X[-16]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpxor	(@Tx[0],@Tx[0],@X[-2&7]);	# "X[-3]"^"X[-8]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpxor	(@X[0],@X[0],@Tx[0]);		# "X[0]"^="X[-3]"^"X[-8]"
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	  &vmovdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	  &vmovdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpsrld	(@Tx[0],@X[0],31);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpslldq(@Tx[1],@X[0],12);		# "X[0]"<<96, extract one dword
 	&vpaddd	(@X[0],@X[0],@X[0]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpor	(@X[0],@X[0],@Tx[0]);		# "X[0]"<<<=1
 	&vpsrld	(@Tx[0],@Tx[1],30);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpslld	(@Tx[1],@Tx[1],2);
 	&vpxor	(@X[0],@X[0],@Tx[0]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
 	&vpxor	(@X[0],@X[0],@Tx[1]);		# "X[0]"^=("X[0]">>96)<<<2
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	  &vmovdqa	($Kx,eval(16*(($Xi)/5))."($K_XX_XX)")	if ($Xi%5==0);	# K_XX_XX
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	  &vmovdqa	($Kx,(16*(($Xi)/5))."($K_XX_XX)")	if ($Xi%5==0);	# K_XX_XX
+	 emit \@insns;
+	 emit \@insns;
+
+        foreach (1 .. scalar @insns) {	# remaining instructions
+            emit \@insns;
+        }
+    } $code .= join("", @CODE);
 
 
-	 foreach (@insns) { eval; }	# remaining instructions [if any]
-
-  $Xi++;	push(@X,shift(@X));	# "rotate" X[]
+    $Xi++;
+    push(@X, shift @X);  # "rotate" X[]
 }
 
-sub Xupdate_avx_32_79()
-{ use integer;
-  my @insns = @_;			# 32 to 48 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xupdate_avx_32_79 {
+    use integer;
+    my @insns = @_;			# 32 to 48 instructions
+
+    undef @CODE; {
 
 	&vpalignr(@Tx[0],@X[-1&7],@X[-2&7],8);	# compose "X[-6]"
 	&vpxor	(@X[0],@X[0],@X[-4&7]);		# "X[0]"="X[-32]"^"X[-16]"
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
 
 	&vpxor	(@X[0],@X[0],@X[-7&7]);		# "X[0]"^="X[-28]"
-	 eval(shift(@insns));
-	 eval(shift(@insns))	if (@insns[0] !~ /&ro[rl]/);
+	 emit \@insns;
+	 emit \@insns	if (@insns[0] !~ /&ro[rl]/);
 	  &vpaddd	(@Tx[1],$Kx,@X[-1&7]);
-	  &vmovdqa	($Kx,eval(16*($Xi/5))."($K_XX_XX)")	if ($Xi%5==0);
-	 eval(shift(@insns));		# ror
-	 eval(shift(@insns));
+	  &vmovdqa	($Kx,(16*($Xi/5))."($K_XX_XX)")	if ($Xi%5==0);
+	 emit \@insns;		# ror
+	 emit \@insns;
 
 	&vpxor	(@X[0],@X[0],@Tx[0]);		# "X[0]"^="X[-6]"
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
 
 	&vpsrld	(@Tx[0],@X[0],30);
-	  &vmovdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
-	 eval(shift(@insns));
+	  &vmovdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer to IALU
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# ror
+	 emit \@insns;
 
 	&vpslld	(@X[0],@X[0],2);
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# ror
-	 eval(shift(@insns));
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# ror
+	 emit \@insns;
 
 	&vpor	(@X[0],@X[0],@Tx[0]);		# "X[0]"<<<=2
-	 eval(shift(@insns));		# body_20_39
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));		# rol
-	 eval(shift(@insns));
+	 emit \@insns;		# body_20_39
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;		# rol
+	 emit \@insns;
 
-	 foreach (@insns) { eval; }	# remaining instructions
+        foreach (1 .. scalar @insns) {	# remaining instructions
+            emit \@insns;
+        }
 
-  $Xi++;	push(@X,shift(@X));	# "rotate" X[]
+    } $code .= join ("", @CODE);
+
+    $Xi++;
+
+    push(@X, shift @X);  # "rotate" X[]
 }
 
-sub Xuplast_avx_80()
-{ use integer;
-  my ($done, @insns) = @_;		# 32 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xuplast_avx_80 {
+    use integer;
+    my ($done, @insns) = @_;		# 32 instructions
 
-	 eval(shift(@insns));
+    undef @CODE; {
+
+	 emit \@insns;
 	  &vpaddd	(@Tx[1],$Kx,@X[-1&7]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
 
-	  &vmovdqa	(eval(16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer IALU
+	  &vmovdqa	((16*(($Xi-1)&3))."(%rsp)",@Tx[1]);	# X[]+K xfer IALU
 
-	 foreach (@insns) { eval; }		# remaining instructions
+        foreach (1 .. scalar @insns) {	# remaining instructions
+            emit \@insns;
+        }
 
 	&cmp	($inp,$len);
 	&je	($done);
@@ -1398,45 +1527,51 @@ sub Xuplast_avx_80()
 	&vpshufb(@X[-4&7],@X[-4&7],@Tx[1]);	# byte swap
 	&add	($inp,64);
 
-  $Xi=0;
+    } $code .= join("", @CODE);
+
+    $Xi=0;
 }
 
-sub Xloop_avx()
-{ use integer;
-  my @insns = @_;				# 32 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xloop_avx {
+    use integer;
+    my @insns = @_;  # 32 instructions
 
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+    undef @CODE; {
+
+	 emit \@insns;
+	 emit \@insns;
 	&vpshufb(@X[($Xi-3)&7],@X[($Xi-3)&7],@Tx[1]);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
 	&vpaddd	(@Tx[0],@X[($Xi-4)&7],$Kx);
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	 eval(shift(@insns));
-	&vmovdqa(eval(16*$Xi)."(%rsp)",@Tx[0]);	# X[]+K xfer to IALU
-	 eval(shift(@insns));
-	 eval(shift(@insns));
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	 emit \@insns;
+	&vmovdqa((16*$Xi)."(%rsp)",@Tx[0]);	# X[]+K xfer to IALU
+	 emit \@insns;
+	 emit \@insns;
 
-	foreach (@insns) { eval; }
+        foreach (1 .. scalar @insns) {	# remaining instructions
+            emit \@insns;
+        }
+
+    } $code .= join("", @CODE);
+
   $Xi++;
 }
 
-sub Xtail_avx()
-{ use integer;
-  my @insns = @_;				# 32 instructions
-  my ($a,$b,$c,$d,$e);
+sub Xtail_avx {
+    my @insns = @_;  # 32 instructions
 
-	foreach (@insns) { eval; }
+    $code .= join("", @insns);
 }
 
 $code.=<<___;
 .align	32
 .Loop_avx:
 ___
-	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
+  	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
 	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
 	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
 	&Xupdate_avx_16_31(sha1_interleave(ENCRYPT, 4));
@@ -1534,6 +1669,7 @@ $code.=<<___;
 	ret
 .size	aesni_cbc_sha1_enc_avx,.-aesni_cbc_sha1_enc_avx
 ___
+########################## AVX decrypt ########################################
 
 						if ($stitched_decrypt) {{{
 # reset
@@ -1541,38 +1677,45 @@ $r=$rx=0;
 $Xi=4;
 
 @aes256_dec = (
-	'&vpxor	($inout0,$rndkey0,"0x00($in0)");',
-	'&vpxor	($inout1,$rndkey0,"0x10($in0)");',
-	'&vpxor	($inout2,$rndkey0,"0x20($in0)");',
-	'&vpxor	($inout3,$rndkey0,"0x30($in0)");',
+    &vpxor($inout0,$rndkey0,"0x00($in0)"),
+    &vpxor($inout1,$rndkey0,"0x10($in0)"),
+    &vpxor($inout2,$rndkey0,"0x20($in0)"),
+    &vpxor($inout3,$rndkey0,"0x30($in0)"),
 
-	'&vmovups($rndkey0,"16-112($key)");',
-	'&vmovups("64(%rsp)",@X[2]);',		# save IV, originally @X[3]
-	undef,undef
-	);
-for ($i=0;$i<13;$i++) {
+    &vmovups($rndkey0,"16-112($key)"),
+    &vmovups("64(%rsp)",@X[3]),         # save IV
+    undef,undef
+  );
+
+for ($i = 0; $i < 13; $i++) {
     push (@aes256_dec,(
-	'&vaesdec	($inout0,$inout0,$rndkey0);',
-	'&vaesdec	($inout1,$inout1,$rndkey0);',
-	'&vaesdec	($inout2,$inout2,$rndkey0);',
-	'&vaesdec	($inout3,$inout3,$rndkey0);	&vmovups($rndkey0,"'.(16*($i+2)-112).'($key)");'
-	));
-    push (@aes256_dec,(undef,undef))	if (($i>=3 && $i<=5) || $i>=11);
-    push (@aes256_dec,(undef,undef))	if ($i==5);
+              &vaesdec($inout0,$inout0,$rndkey0),
+              &vaesdec($inout1,$inout1,$rndkey0),
+              &vaesdec($inout2,$inout2,$rndkey0),
+              &vaesdec($inout3,$inout3,$rndkey0) . &vmovups($rndkey0,(16*($i+2)-112)."($key)")
+          ));
+
+    if (($i >= 3 && $i <=5) || $i >= 11) {
+        push @aes256_dec, (undef,undef);
+    }
+    if ($i == 5) {
+        push  @aes256_dec, (undef,undef);
+    }
 }
-push(@aes256_dec,(
-	'&vaesdeclast	($inout0,$inout0,$rndkey0);	&vmovups(@X[0],"0x00($in0)");',
-	'&vaesdeclast	($inout1,$inout1,$rndkey0);	&vmovups(@X[1],"0x10($in0)");',
-	'&vaesdeclast	($inout2,$inout2,$rndkey0);	&vmovups(@X[2],"0x20($in0)");',
-	'&vaesdeclast	($inout3,$inout3,$rndkey0);	&vmovups(@X[3],"0x30($in0)");',
 
-	'&vxorps	($inout0,$inout0,"64(%rsp)");	&vmovdqu($rndkey0,"-112($key)");',
-	'&vxorps	($inout1,$inout1,@X[0]);	&vmovups("0x00($out,$in0)",$inout0);',
-	'&vxorps	($inout2,$inout2,@X[1]);	&vmovups("0x10($out,$in0)",$inout1);',
-	'&vxorps	($inout3,$inout3,@X[2]);	&vmovups("0x20($out,$in0)",$inout2);',
+push @aes256_dec, (
+    &vaesdeclast($inout0,$inout0,$rndkey0) . &vmovups(@X[0],"0x00($in0)"),
+    &vaesdeclast($inout1,$inout1,$rndkey0) . &vmovups(@X[1],"0x10($in0)"),
+    &vaesdeclast($inout2,$inout2,$rndkey0) . &vmovups(@X[2],"0x20($in0)"),
+    &vaesdeclast($inout3,$inout3,$rndkey0) . &vmovups(@X[3],"0x30($in0)"),
 
-	'&vmovups	("0x30($out,$in0)",$inout3);'
-	));
+    &vxorps($inout0,$inout0,"64(%rsp)") .  &vmovdqu($rndkey0,"-112($key)"),
+    &vxorps($inout1,$inout1,@X[0])      .  &vmovups("0x00($out,$in0)",$inout0),
+    &vxorps($inout2,$inout2,@X[1])      .  &vmovups("0x10($out,$in0)",$inout1),
+    &vxorps($inout3,$inout3,@X[2])      .  &vmovups("0x20($out,$in0)",$inout2),
+
+    &vmovups    ("0x30($out,$in0)",$inout3)
+);
 
 $code.=<<___;
 .type	aesni256_cbc_sha1_dec_avx,\@function,6
@@ -1672,7 +1815,7 @@ ___
 	&Xloop_avx(sha1_interleave(DECRYPT, 4));
 	&Xloop_avx(sha1_interleave(DECRYPT, 4));
 
-	eval(@aes256_dec[-1]);			# last store
+	$code .= @aes256_dec[-1];			# last store
 $code.=<<___;
 	lea	64($in0),$in0
 
@@ -1701,7 +1844,7 @@ ___
 	&Xtail_avx(sha1_interleave(DECRYPT, 4));
 	&Xtail_avx(sha1_interleave(DECRYPT, 4));
 
-	eval(@aes256_dec[-1]);			# last store
+	$code .= @aes256_dec[-1];			# last store
 $code.=<<___;
 
 	add	0($ctx),$A			# update context
@@ -1808,7 +1951,7 @@ $code.=<<___;
 .align	16
 .Loop_shaext:
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	movdqu		($inp),@MSG[0]
 	movdqa		$E,$E_SAVE		# offload $E
@@ -1816,7 +1959,7 @@ $code.=<<___;
 	movdqu		0x10($inp),@MSG[1]
 	movdqa		$ABCD,$ABCD_SAVE	# offload $ABCD
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	pshufb		$BSWAP,@MSG[1]
 
@@ -1825,7 +1968,7 @@ $code.=<<___;
 	lea		0x40($inp),$inp
 	pxor		$E_SAVE,@MSG[0]		# black magic
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	pxor		$E_SAVE,@MSG[0]		# black magic
 	movdqa		$ABCD,$E_
@@ -1833,21 +1976,21 @@ $code.=<<___;
 	sha1rnds4	\$0,$E,$ABCD		# 0-3
 	sha1nexte	@MSG[1],$E_
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	sha1msg1	@MSG[1],@MSG[0]
 	movdqu		-0x10($inp),@MSG[3]
 	movdqa		$ABCD,$E
 	pshufb		$BSWAP,@MSG[3]
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	sha1rnds4	\$0,$E_,$ABCD		# 4-7
 	sha1nexte	@MSG[2],$E
 	pxor		@MSG[2],@MSG[0]
 	sha1msg1	@MSG[2],@MSG[1]
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 
 for($i=2;$i<20-4;$i++) {
 $code.=<<___;
@@ -1855,7 +1998,7 @@ $code.=<<___;
 	sha1rnds4	\$`int($i/5)`,$E,$ABCD	# 8-11
 	sha1nexte	@MSG[3],$E_
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	sha1msg2	@MSG[3],@MSG[0]
 	pxor		@MSG[3],@MSG[1]
@@ -1864,7 +2007,7 @@ ___
 	($E,$E_)=($E_,$E);
 	push(@MSG,shift(@MSG));
 
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 }
 $code.=<<___;
 	movdqa		$ABCD,$E_
@@ -1873,27 +2016,27 @@ $code.=<<___;
 	sha1msg2	@MSG[3],@MSG[0]
 	pxor		@MSG[3],@MSG[1]
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	movdqa		$ABCD,$E
 	sha1rnds4	\$3,$E_,$ABCD		# 68-71
 	sha1nexte	@MSG[0],$E
 	sha1msg2	@MSG[0],@MSG[1]
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	movdqa		$E_SAVE,@MSG[0]
 	movdqa		$ABCD,$E_
 	sha1rnds4	\$3,$E,$ABCD		# 72-75
 	sha1nexte	@MSG[1],$E_
 ___
-	&$aesenc();
+	$code .= aes_enc_ssse3();
 $code.=<<___;
 	movdqa		$ABCD,$E
 	sha1rnds4	\$3,$E_,$ABCD		# 76-79
 	sha1nexte	$MSG[0],$E
 ___
-	while($r<40)	{ &$aesenc(); }		# remaining aesenc's
+	while($r<40)	{ $code .= aes_enc_ssse3(); }		# remaining aesenc's
 $code.=<<___;
 	dec		$len
 

@@ -17,6 +17,7 @@ GENERATE[vpaes-x86_64.s]=asm/vpaes-x86_64.pl $(PERLASM_SCHEME)
 GENERATE[bsaes-x86_64.s]=asm/bsaes-x86_64.pl $(PERLASM_SCHEME)
 GENERATE[aesni-x86_64.s]=asm/aesni-x86_64.pl $(PERLASM_SCHEME)
 GENERATE[aesni-sha1-x86_64.s]=asm/aesni-sha1-x86_64.pl $(PERLASM_SCHEME)
+INCLUDE[asm/aesni-sha1-x86_64.pl]=../perlasm/
 GENERATE[aesni-sha256-x86_64.s]=asm/aesni-sha256-x86_64.pl $(PERLASM_SCHEME)
 GENERATE[aesni-mb-x86_64.s]=asm/aesni-mb-x86_64.pl $(PERLASM_SCHEME)
 
